@@ -159,34 +159,46 @@ async function processMessage(userId, userName, userMessage) {
                 // Parse date from AI or default to now
                 let expenseDate = null;
                 if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-                    expenseDate = date + ' 12:00:00'; // Set to noon of that day
+                    expenseDate = date + ' 12:00:00';
                 }
 
-                // Save expense
-                const expenseId = dao.addExpense({
-                    category_id: cat ? cat.id : null,
-                    description,
-                    amount,
-                    currency: 'VND',
-                    note: note || '',
-                    zalo_user_id: userId,
-                    zalo_user_name: userName,
-                    created_by: 'bot',
-                    created_at: expenseDate
-                });
+                // Duplicate check
+                const duplicate = dao.findDuplicateExpense(userId, amount, description);
+                if (duplicate) {
+                    reply = `⚠️ Chi tiêu có thể bị trùng!\n\n` +
+                        `📝 "${duplicate.description}" - ${formatCurrency(duplicate.amount)}\n` +
+                        `🆔 Mã: #${duplicate.id}\n` +
+                        `⏰ Đã ghi nhận lúc: ${duplicate.created_at}\n\n` +
+                        `Chi tiêu này rất giống với mục đã tồn tại.\n❌ Không tạo mới để tránh trùng lặp.\n\n` +
+                        `💡 Nếu muốn thêm mới, hãy thay đổi mô tả hoặc số tiền.`;
+                } else {
 
-                // Format display date
-                const displayDate = date || today;
-                const dateLabel = date === today ? 'Hôm nay' : displayDate;
+                    // Save expense
+                    const expenseId = dao.addExpense({
+                        category_id: cat ? cat.id : null,
+                        description,
+                        amount,
+                        currency: 'VND',
+                        note: note || '',
+                        zalo_user_id: userId,
+                        zalo_user_name: userName,
+                        created_by: 'bot',
+                        created_at: expenseDate
+                    });
 
-                reply = `✅ Đã ghi nhận chi tiêu!\n\n` +
-                    `📝 ${description}\n` +
-                    `💰 ${formatCurrency(amount)}\n` +
-                    `📂 ${cat ? cat.icon + ' ' + cat.name : 'Chưa phân loại'}\n` +
-                    `📅 ${dateLabel}\n` +
-                    (note ? `📌 ${note}\n` : '') +
-                    `🆔 Mã: #${expenseId}\n\n` +
-                    `Nhập thêm chi tiêu hoặc gõ "báo cáo" để xem tổng kết.`;
+                    // Format display date
+                    const displayDate = date || today;
+                    const dateLabel = date === today ? 'Hôm nay' : displayDate;
+
+                    reply = `✅ Đã ghi nhận chi tiêu!\n\n` +
+                        `📝 ${description}\n` +
+                        `💰 ${formatCurrency(amount)}\n` +
+                        `📂 ${cat ? cat.icon + ' ' + cat.name : 'Chưa phân loại'}\n` +
+                        `📅 ${dateLabel}\n` +
+                        (note ? `📌 ${note}\n` : '') +
+                        `🆔 Mã: #${expenseId}\n\n` +
+                        `Nhập thêm chi tiêu hoặc gõ "báo cáo" để xem tổng kết.`;
+                } // end duplicate else
 
             } else if (actionData.action === 'get_report') {
                 const summary = dao.getExpenseSummary();
@@ -248,7 +260,6 @@ Trả về **ĐÚNG JSON** nếu nhận diện được hoá đơn:
 - Mô tả ngắn gọn, note có thể ghi chi tiết hơn (tên cửa hàng, mã bill...)`;
 
 async function processImage(userId, userName, imageBase64, caption = '') {
-    // Get current date
     const now = new Date();
     const vnDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
     const today = vnDate.toISOString().split('T')[0];
@@ -288,9 +299,63 @@ async function processImage(userId, userName, imageBase64, caption = '') {
     return { text: aiResponse, expense: null };
 }
 
+// Process multiple images as parts of a single invoice
+async function processMultiImage(userId, userName, imagesBase64, caption = '') {
+    const now = new Date();
+    const vnDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const today = vnDate.toISOString().split('T')[0];
+
+    const imageContents = imagesBase64.map((img, idx) => ({
+        type: 'image_url',
+        image_url: { url: `data:image/jpeg;base64,${img}` }
+    }));
+
+    const messages = [
+        {
+            role: 'system',
+            content: IMAGE_ANALYSIS_PROMPT +
+                `\n[NGÀY HIỆN TẠI: ${today}]` +
+                `\n\n⚠️ QUAN TRỌNG: User gửi ${imagesBase64.length} ảnh. Đây có thể là NHIỀU PHẦN của cùng 1 hoá đơn dài (bị chia thành nhiều ảnh). ` +
+                `Hãy ghép nội dung tất cả ảnh lại và phân tích như MỘT hoá đơn duy nhất. CHỈ trả về 1 JSON duy nhất.`
+        },
+        {
+            role: 'user',
+            content: [
+                ...imageContents,
+                {
+                    type: 'text',
+                    text: caption
+                        ? `Ghi chú từ user: ${caption}\n\nĐây là ${imagesBase64.length} ảnh của cùng 1 hoá đơn. Hãy ghép và phân tích.`
+                        : `Đây là ${imagesBase64.length} ảnh của cùng 1 hoá đơn dài. Hãy ghép nội dung và phân tích thành 1 chi tiêu.`
+                }
+            ]
+        }
+    ];
+
+    const aiResponse = await callAI(messages);
+
+    if (!aiResponse) {
+        return { text: '❌ Không thể phân tích ảnh. Vui lòng thử lại.', expense: null };
+    }
+
+    try {
+        const jsonMatch = aiResponse.match(/\{[\s\S]*"action"[\s\S]*\}/);
+        if (jsonMatch) {
+            const actionData = JSON.parse(jsonMatch[0]);
+            if (actionData.action === 'add_expense') {
+                return { text: aiResponse, expense: actionData.data };
+            }
+        }
+    } catch (e) {
+        console.log('[AI] Multi-image analysis - no JSON in response');
+    }
+
+    return { text: aiResponse, expense: null };
+}
+
 function formatCurrency(amount) {
     if (!amount || amount === 0) return '0 ₫';
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 }
 
-module.exports = { processMessage, processImage, callAI, formatCurrency };
+module.exports = { processMessage, processImage, processMultiImage, callAI, formatCurrency };

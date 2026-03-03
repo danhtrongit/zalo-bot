@@ -233,6 +233,40 @@ const dao = {
     db.prepare('UPDATE expenses SET image_url = ? WHERE id = ?').run(imageUrl, expenseId);
   },
 
+  // Check for duplicate expense (same user, similar amount & description within 10 min)
+  findDuplicateExpense(userId, amount, description, minutesWindow = 10) {
+    const expense = db.prepare(`
+      SELECT * FROM expenses 
+      WHERE zalo_user_id = ? 
+        AND amount = ? 
+        AND created_at >= datetime('now', '-${minutesWindow} minutes')
+      ORDER BY created_at DESC LIMIT 1
+    `).get(userId, amount);
+
+    if (!expense) return null;
+
+    // Check description similarity (simple)
+    const descA = (expense.description || '').toLowerCase().trim();
+    const descB = (description || '').toLowerCase().trim();
+    if (descA === descB || descA.includes(descB) || descB.includes(descA)) {
+      return expense;
+    }
+    // Same amount within window is enough
+    if (Math.abs(expense.amount - amount) < 1) {
+      return expense;
+    }
+    return null;
+  },
+
+  // Append additional image to existing expense (multi-image invoice)
+  appendExpenseImage(expenseId, newImageUrl) {
+    const expense = db.prepare('SELECT image_url FROM expenses WHERE id = ?').get(expenseId);
+    if (!expense) return;
+    const current = expense.image_url || '';
+    const updated = current ? `${current},${newImageUrl}` : newImageUrl;
+    db.prepare('UPDATE expenses SET image_url = ? WHERE id = ?').run(updated, expenseId);
+  },
+
   getExpenses({ limit = 50, offset = 0, category_id, from_date, to_date, search, user_id } = {}) {
     let where = [];
     let params = [];

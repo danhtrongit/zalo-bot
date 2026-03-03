@@ -157,6 +157,11 @@ app.delete('/api/users/:id', apiAuthMiddleware, (req, res) => {
     }
 });
 
+// Buffer for multi-image invoices (user sends 2 images of same long invoice)
+// Key: userId, Value: { images: [base64], savedPaths: [url], caption, timer, chatId, userName }
+const pendingImages = new Map();
+const MULTI_IMAGE_WAIT_MS = 4000; // Wait 4 seconds for additional images
+
 // ============= Webhook Endpoint (no auth, uses secret token) =============
 app.post('/webhooks', async (req, res) => {
     const secretToken = req.headers['x-bot-api-secret-token'];
@@ -266,118 +271,131 @@ async function handleUpdate(update) {
             return;
         }
         dao.updateUserName(userId, userName);
-        await zaloApi.sendChatAction(chatId, 'typing');
 
         try {
-            // Get image URL from message
-            // Zalo sends: message.photo_url (direct URL) and message.caption
             let imageUrl = message.photo_url || null;
             const caption = message.caption || message.text || '';
-
-            // Fallback: try other possible fields
             if (!imageUrl && message.photo && message.photo.length > 0) {
                 const bestPhoto = message.photo[message.photo.length - 1];
                 imageUrl = bestPhoto.file_url || bestPhoto.url || bestPhoto.photo_url;
             }
-            if (!imageUrl && message.url) {
-                imageUrl = message.url;
-            }
+            if (!imageUrl && message.url) imageUrl = message.url;
             if (!imageUrl && message.file_id) {
                 const fileInfo = await zaloApi.getFile(message.file_id);
-                if (fileInfo?.ok) {
-                    imageUrl = fileInfo.result.file_url;
-                }
+                if (fileInfo?.ok) imageUrl = fileInfo.result.file_url;
             }
-
             if (!imageUrl) {
                 await zaloApi.sendMessage(chatId, '❌ Không thể tải ảnh. Vui lòng thử gửi lại.');
                 return;
             }
 
-            // Download image
             const imageBuffer = await zaloApi.downloadFile(imageUrl);
             if (!imageBuffer) {
                 await zaloApi.sendMessage(chatId, '❌ Lỗi tải ảnh. Vui lòng thử lại.');
                 return;
             }
 
-            // Save image to uploads folder
             const fs = require('fs');
             const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
             if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
             const filename = `${Date.now()}_${userId}.jpg`;
-            const filepath = path.join(uploadsDir, filename);
-            fs.writeFileSync(filepath, imageBuffer);
+            fs.writeFileSync(path.join(uploadsDir, filename), imageBuffer);
             const savedImageUrl = `/uploads/${filename}`;
-
             console.log(`[Bot] Image saved: ${savedImageUrl}`);
 
-            // Convert to base64 for AI
             const imageBase64 = imageBuffer.toString('base64');
 
-            // Send to AI for analysis
-            const { processImage } = require('./ai-agent');
-            const result = await processImage(userId, userName, imageBase64, caption);
-
-            if (result.expense) {
-                const { description, amount, category, note, date } = result.expense;
-
-                // Find category
-                let cat = dao.getCategoryByName(category);
-                if (!cat) {
-                    const allCats = dao.getAllCategories();
-                    cat = allCats.find(c => c.name.toLowerCase().includes(category.toLowerCase())) ||
-                        allCats.find(c => c.name === 'Khác');
-                }
-
-                // Parse date
-                let expenseDate = null;
-                if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-                    expenseDate = date + ' 12:00:00';
-                }
-
-                // Save expense with image
-                const expenseId = dao.addExpense({
-                    category_id: cat ? cat.id : null,
-                    description,
-                    amount,
-                    currency: 'VND',
-                    note: note || '',
-                    image_url: savedImageUrl,
-                    zalo_user_id: userId,
-                    zalo_user_name: userName,
-                    created_by: 'bot',
-                    created_at: expenseDate
-                });
-
-                const { formatCurrency } = require('./ai-agent');
-                const displayDate = date || new Date().toISOString().split('T')[0];
-
-                const reply = `📸 Đã phân tích hoá đơn & ghi nhận!\n\n` +
-                    `📝 ${description}\n` +
-                    `💰 ${formatCurrency(amount)}\n` +
-                    `📂 ${cat ? cat.icon + ' ' + cat.name : 'Chưa phân loại'}\n` +
-                    `📅 ${displayDate}\n` +
-                    (note ? `📌 ${note}\n` : '') +
-                    `🖼️ Ảnh đã lưu\n` +
-                    `🆔 Mã: #${expenseId}\n\n` +
-                    `Xem lại ảnh trên Dashboard.`;
-
-                await zaloApi.sendMessage(chatId, reply);
-                console.log(`[Bot] Image expense recorded for ${userName}: ${description} - ${amount}`);
+            // Multi-image buffering
+            const existing = pendingImages.get(userId);
+            if (existing) {
+                clearTimeout(existing.timer);
+                existing.images.push(imageBase64);
+                existing.savedPaths.push(savedImageUrl);
+                if (caption) existing.caption = caption;
+                console.log(`[Bot] Multi-image: ${existing.images.length} images buffered for ${userName}`);
+                existing.timer = setTimeout(() => processBufferedImages(userId), existing.images.length >= 3 ? 1000 : MULTI_IMAGE_WAIT_MS);
+                pendingImages.set(userId, existing);
+                await zaloApi.sendMessage(chatId, `📷 Đã nhận ảnh ${existing.images.length}. Đang đợi thêm...`);
             } else {
-                // AI couldn't extract expense from image
-                await zaloApi.sendMessage(chatId,
-                    `📸 Đã nhận ảnh nhưng không nhận diện được hoá đơn.\n\n` +
-                    `${result.text}\n\n` +
-                    `💡 Bạn có thể nhập chi tiêu bằng text, ví dụ:\n"ăn trưa 200k hôm qua"`
-                );
+                const pending = {
+                    images: [imageBase64],
+                    savedPaths: [savedImageUrl],
+                    caption,
+                    chatId,
+                    userName,
+                    timer: setTimeout(() => processBufferedImages(userId), MULTI_IMAGE_WAIT_MS),
+                };
+                pendingImages.set(userId, pending);
+                await zaloApi.sendChatAction(chatId, 'typing');
             }
         } catch (err) {
-            console.error('[Bot] Image processing error:', err.message);
-            await zaloApi.sendMessage(chatId, '❌ Lỗi xử lý ảnh. Vui lòng thử lại hoặc nhập bằng text.');
+            console.error('[Bot] Image handling error:', err.message);
+            await zaloApi.sendMessage(chatId, '❌ Lỗi xử lý ảnh. Vui lòng thử lại.');
         }
+
+    } else if (event_name === 'message.file.received') {
+        if (!dao.isUserAllowed(userId)) {
+            await zaloApi.sendMessage(chatId, `⛔ Bạn chưa được cấp quyền.\n🆔 ID: ${userId}`);
+            return;
+        }
+        dao.updateUserName(userId, userName);
+
+        try {
+            const fileUrl = message.url || message.file_url || null;
+            const fileName = message.file_name || message.name || 'file';
+            if (!fileUrl) {
+                await zaloApi.sendMessage(chatId, '❌ Không thể tải file.');
+                return;
+            }
+            const isPdf = fileName.toLowerCase().endsWith('.pdf');
+            if (!isPdf) {
+                await zaloApi.sendMessage(chatId,
+                    `📎 Đã nhận file "${fileName}".\n⚠️ Hiện chỉ hỗ trợ ảnh (JPG/PNG) và PDF.\n💡 Vui lòng chụp ảnh hoá đơn hoặc gửi PDF.`
+                );
+                return;
+            }
+
+            await zaloApi.sendChatAction(chatId, 'typing');
+            await zaloApi.sendMessage(chatId, `📄 Đang xử lý PDF "${fileName}"...`);
+
+            const fileBuffer = await zaloApi.downloadFile(fileUrl);
+            if (!fileBuffer) {
+                await zaloApi.sendMessage(chatId, '❌ Lỗi tải file PDF.');
+                return;
+            }
+
+            const fs = require('fs');
+            const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+            if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+            const pdfFilename = `${Date.now()}_${userId}.pdf`;
+            fs.writeFileSync(path.join(uploadsDir, pdfFilename), fileBuffer);
+
+            let pdfText = '';
+            try {
+                const pdfParse = require('pdf-parse');
+                const data = await pdfParse(fileBuffer);
+                pdfText = data.text || '';
+            } catch (e) {
+                console.log('[Bot] pdf-parse not available, fallback text extraction');
+                pdfText = fileBuffer.toString('utf-8').replace(/[^\x20-\x7E\u00C0-\u024F\u1E00-\u1EFF]/g, ' ').replace(/\s+/g, ' ').trim();
+            }
+
+            if (!pdfText || pdfText.length < 10) {
+                await zaloApi.sendMessage(chatId,
+                    `📄 Không đọc được nội dung PDF.\n💡 Vui lòng chụp ảnh hoá đơn và gửi.`
+                );
+                return;
+            }
+
+            const aiPrompt = `Nội dung từ file PDF hoá đơn "${fileName}":\n\n${pdfText.substring(0, 3000)}\n\nPhân tích và ghi nhận chi tiêu.`;
+            const reply = await processMessage(userId, userName, aiPrompt);
+            await zaloApi.sendMessage(chatId, reply);
+            console.log(`[Bot] PDF processed for ${userName}: ${fileName}`);
+        } catch (err) {
+            console.error('[Bot] File processing error:', err.message);
+            await zaloApi.sendMessage(chatId, '❌ Lỗi xử lý file. Vui lòng gửi ảnh hoá đơn.');
+        }
+
     } else if (event_name === 'message.sticker.received') {
         if (!dao.isUserAllowed(userId)) {
             await zaloApi.sendMessage(chatId, `⛔ Bạn chưa được cấp quyền.\n🆔 ID: ${userId}`);
@@ -386,6 +404,110 @@ async function handleUpdate(update) {
         await zaloApi.sendMessage(chatId, '😊 Cảm ơn bạn! Để ghi nhận chi tiêu, vui lòng nhập theo format:\n"mô tả + số tiền"\nVD: "mua thiết bị quay 10tr"');
     } else if (event_name === 'message.unsupported.received') {
         await zaloApi.sendMessage(chatId, 'Tin nhắn này chưa được hỗ trợ. Vui lòng gửi tin nhắn văn bản.');
+    }
+}
+
+// ============= Process Buffered Images =============
+async function processBufferedImages(userId) {
+    const pending = pendingImages.get(userId);
+    if (!pending) return;
+    pendingImages.delete(userId);
+
+    const { images, savedPaths, caption, chatId, userName } = pending;
+    console.log(`[Bot] Processing ${images.length} image(s) for ${userName}`);
+
+    try {
+        await zaloApi.sendChatAction(chatId, 'typing');
+
+        if (images.length > 1) {
+            await zaloApi.sendMessage(chatId, `🔄 Đang phân tích ${images.length} ảnh hoá đơn...`);
+        }
+
+        const { processImage, processMultiImage, formatCurrency } = require('./ai-agent');
+
+        let result;
+        if (images.length === 1) {
+            result = await processImage(userId, userName, images[0], caption);
+        } else {
+            // Multi-image: use special multi-image processing
+            result = await processMultiImage(userId, userName, images, caption);
+        }
+
+        if (result.expense) {
+            const { description, amount, category, note, date } = result.expense;
+
+            // ---- Duplicate detection ----
+            const duplicate = dao.findDuplicateExpense(userId, amount, description);
+            if (duplicate) {
+                // Same expense exists — just append images
+                for (const imgPath of savedPaths) {
+                    dao.appendExpenseImage(duplicate.id, imgPath);
+                }
+                const reply = `⚠️ Phát hiện hoá đơn trùng lặp!\n\n` +
+                    `📝 ${duplicate.description}\n` +
+                    `💰 ${formatCurrency(duplicate.amount)}\n` +
+                    `🆔 Mã: #${duplicate.id}\n\n` +
+                    `🖼️ Đã thêm ${savedPaths.length} ảnh vào chi tiêu có sẵn.\n` +
+                    `❌ Không tạo chi tiêu mới (trùng lặp).`;
+                await zaloApi.sendMessage(chatId, reply);
+                console.log(`[Bot] Duplicate detected for ${userName}: #${duplicate.id}`);
+                return;
+            }
+
+            // Find category
+            let cat = dao.getCategoryByName(category);
+            if (!cat) {
+                const allCats = dao.getAllCategories();
+                cat = allCats.find(c => c.name.toLowerCase().includes(category.toLowerCase())) ||
+                    allCats.find(c => c.name === 'Khác');
+            }
+
+            // Parse date
+            let expenseDate = null;
+            if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                expenseDate = date + ' 12:00:00';
+            }
+
+            // Save expense with all images
+            const allImages = savedPaths.join(',');
+            const expenseId = dao.addExpense({
+                category_id: cat ? cat.id : null,
+                description,
+                amount,
+                currency: 'VND',
+                note: note || '',
+                image_url: allImages,
+                zalo_user_id: userId,
+                zalo_user_name: userName,
+                created_by: 'bot',
+                created_at: expenseDate
+            });
+
+            const displayDate = date || new Date().toISOString().split('T')[0];
+            const imgCount = images.length > 1 ? `🖼️ ${images.length} ảnh đã lưu\n` : `🖼️ Ảnh đã lưu\n`;
+
+            const reply = `📸 Đã phân tích hoá đơn & ghi nhận!\n\n` +
+                `📝 ${description}\n` +
+                `💰 ${formatCurrency(amount)}\n` +
+                `📂 ${cat ? cat.icon + ' ' + cat.name : 'Chưa phân loại'}\n` +
+                `📅 ${displayDate}\n` +
+                (note ? `📌 ${note}\n` : '') +
+                imgCount +
+                `🆔 Mã: #${expenseId}\n\n` +
+                `Xem lại trên Dashboard.`;
+
+            await zaloApi.sendMessage(chatId, reply);
+            console.log(`[Bot] Image expense recorded for ${userName}: ${description} - ${amount} (${images.length} images)`);
+        } else {
+            await zaloApi.sendMessage(chatId,
+                `📸 Đã nhận ${images.length > 1 ? images.length + ' ảnh' : 'ảnh'} nhưng không nhận diện được hoá đơn.\n\n` +
+                `${result.text}\n\n` +
+                `💡 Bạn có thể nhập chi tiêu bằng text, VD:\n"ăn trưa 200k hôm qua"`
+            );
+        }
+    } catch (err) {
+        console.error('[Bot] Image processing error:', err.message);
+        await zaloApi.sendMessage(chatId, '❌ Lỗi xử lý ảnh. Vui lòng thử lại.');
     }
 }
 
