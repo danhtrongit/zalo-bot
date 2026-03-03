@@ -280,17 +280,19 @@ async function handleUpdate(update) {
 
         try {
             // Get image URL from message
-            let imageUrl = null;
-            const caption = message.text || '';
+            // Zalo sends: message.photo_url (direct URL) and message.caption
+            let imageUrl = message.photo_url || null;
+            const caption = message.caption || message.text || '';
 
-            // Zalo sends photo info in message.photo array or message.url
-            if (message.photo && message.photo.length > 0) {
-                // Get highest resolution photo
+            // Fallback: try other possible fields
+            if (!imageUrl && message.photo && message.photo.length > 0) {
                 const bestPhoto = message.photo[message.photo.length - 1];
-                imageUrl = bestPhoto.file_url || bestPhoto.url;
-            } else if (message.url) {
+                imageUrl = bestPhoto.file_url || bestPhoto.url || bestPhoto.photo_url;
+            }
+            if (!imageUrl && message.url) {
                 imageUrl = message.url;
-            } else if (message.file_id) {
+            }
+            if (!imageUrl && message.file_id) {
                 const fileInfo = await zaloApi.getFile(message.file_id);
                 if (fileInfo?.ok) {
                     imageUrl = fileInfo.result.file_url;
