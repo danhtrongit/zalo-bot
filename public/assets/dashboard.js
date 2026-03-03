@@ -389,7 +389,7 @@ async function loadExpenses() {
 function renderExpensesTable(expenses) {
     const tbody = document.getElementById('expenses-tbody');
     if (!expenses || expenses.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Không có chi tiêu nào</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Không có chi tiêu nào</td></tr>';
         return;
     }
 
@@ -403,6 +403,9 @@ function renderExpensesTable(expenses) {
         </span>
       </td>
       <td class="amount">${formatCurrency(e.amount)}</td>
+      <td>${e.image_url
+            ? `<a href="${e.image_url}" target="_blank" title="Xem ảnh hoá đơn"><img src="${e.image_url}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--border);" alt="bill"></a>`
+            : '<span style="color:var(--text-muted)">-</span>'}</td>
       <td>${escapeHtml(e.note || '-')}</td>
       <td>${e.zalo_user_name || e.created_by || '-'}</td>
       <td class="time-text">${formatDate(e.created_at)}</td>

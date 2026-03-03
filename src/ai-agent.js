@@ -222,9 +222,75 @@ async function processMessage(userId, userName, userMessage) {
     return reply;
 }
 
+const IMAGE_ANALYSIS_PROMPT = `Bạn là trợ lý AI phân tích ảnh hoá đơn/bill/receipt cho công ty VIETNEW ENTERTAINMENT.
+
+## NHIỆM VỤ:
+Phân tích ảnh hoá đơn/bill và trích xuất thông tin chi tiêu.
+
+## DANH MỤC:
+1. Thiết bị & Công nghệ  2. Văn phòng phẩm  3. Di chuyển & Vận chuyển
+4. Ăn uống & Tiếp khách  5. Marketing & Quảng cáo  6. Nhân sự & Lương
+7. Thuê mặt bằng  8. Sản xuất phim  9. Hậu kỳ & Dựng phim
+10. Bản quyền & Pháp lý  11. Điện, nước, Internet  12. Khác
+
+## OUTPUT FORMAT:
+Trả về **ĐÚNG JSON** nếu nhận diện được hoá đơn:
+\`\`\`json
+{"action":"add_expense","data":{"description":"mô tả ngắn","amount":số tiền,"category":"tên danh mục","date":"YYYY-MM-DD","note":"chi tiết bổ sung từ bill"}}
+\`\`\`
+
+## QUY TẮC:
+- Nếu ảnh là hoá đơn/bill → trích xuất và trả JSON
+- Nếu ảnh không phải hoá đơn → trả text: "Ảnh này không phải hoá đơn/bill"
+- Amount phải là số (number), không có đơn vị
+- Nếu bill có ngày → dùng ngày trên bill
+- Nếu bill không có ngày → dùng ngày hiện tại
+- Mô tả ngắn gọn, note có thể ghi chi tiết hơn (tên cửa hàng, mã bill...)`;
+
+async function processImage(userId, userName, imageBase64, caption = '') {
+    // Get current date
+    const now = new Date();
+    const vnDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const today = vnDate.toISOString().split('T')[0];
+
+    const messages = [
+        { role: 'system', content: IMAGE_ANALYSIS_PROMPT + `\n[NGÀY HIỆN TẠI: ${today}]` },
+        {
+            role: 'user',
+            content: [
+                {
+                    type: 'image_url',
+                    image_url: { url: `data:image/jpeg;base64,${imageBase64}` }
+                },
+                ...(caption ? [{ type: 'text', text: `Ghi chú từ user: ${caption}` }] : [{ type: 'text', text: 'Phân tích ảnh hoá đơn/bill này.' }])
+            ]
+        }
+    ];
+
+    const aiResponse = await callAI(messages);
+
+    if (!aiResponse) {
+        return { text: '❌ Không thể phân tích ảnh. Vui lòng thử lại hoặc nhập chi tiêu bằng text.', expense: null };
+    }
+
+    try {
+        const jsonMatch = aiResponse.match(/\{[\s\S]*"action"[\s\S]*\}/);
+        if (jsonMatch) {
+            const actionData = JSON.parse(jsonMatch[0]);
+            if (actionData.action === 'add_expense') {
+                return { text: aiResponse, expense: actionData.data };
+            }
+        }
+    } catch (e) {
+        console.log('[AI] Image analysis - no JSON in response');
+    }
+
+    return { text: aiResponse, expense: null };
+}
+
 function formatCurrency(amount) {
     if (!amount || amount === 0) return '0 ₫';
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 }
 
-module.exports = { processMessage, callAI, formatCurrency };
+module.exports = { processMessage, processImage, callAI, formatCurrency };

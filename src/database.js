@@ -38,6 +38,7 @@ db.exec(`
     amount REAL NOT NULL,
     currency TEXT DEFAULT 'VND',
     note TEXT,
+    image_url TEXT,
     zalo_user_id TEXT,
     zalo_user_name TEXT,
     created_by TEXT DEFAULT 'bot',
@@ -105,6 +106,9 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+// Migrations for existing databases
+try { db.prepare('ALTER TABLE expenses ADD COLUMN image_url TEXT').run(); } catch (e) { /* column already exists */ }
 
 // Seed default categories
 const defaultCategories = [
@@ -181,19 +185,17 @@ const dao = {
   },
 
   // ---- Expenses ----
-  addExpense({ category_id, description, amount, currency = 'VND', note, zalo_user_id, zalo_user_name, created_by = 'bot', created_at }) {
-    if (created_at) {
-      const result = db.prepare(`
-        INSERT INTO expenses (category_id, description, amount, currency, note, zalo_user_id, zalo_user_name, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(category_id, description, amount, currency, note, zalo_user_id, zalo_user_name, created_by, created_at);
-      return result.lastInsertRowid;
-    }
-    const result = db.prepare(`
-      INSERT INTO expenses (category_id, description, amount, currency, note, zalo_user_id, zalo_user_name, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(category_id, description, amount, currency, note, zalo_user_id, zalo_user_name, created_by);
+  addExpense({ category_id, description, amount, currency = 'VND', note, image_url, zalo_user_id, zalo_user_name, created_by = 'bot', created_at }) {
+    const cols = ['category_id', 'description', 'amount', 'currency', 'note', 'image_url', 'zalo_user_id', 'zalo_user_name', 'created_by'];
+    const vals = [category_id, description, amount, currency, note, image_url || null, zalo_user_id, zalo_user_name, created_by];
+    if (created_at) { cols.push('created_at'); vals.push(created_at); }
+    const placeholders = cols.map(() => '?').join(', ');
+    const result = db.prepare(`INSERT INTO expenses (${cols.join(', ')}) VALUES (${placeholders})`).run(...vals);
     return result.lastInsertRowid;
+  },
+
+  updateExpenseImage(expenseId, imageUrl) {
+    db.prepare('UPDATE expenses SET image_url = ? WHERE id = ?').run(imageUrl, expenseId);
   },
 
   getExpenses({ limit = 50, offset = 0, category_id, from_date, to_date, search } = {}) {

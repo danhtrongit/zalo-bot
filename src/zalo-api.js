@@ -122,6 +122,28 @@ const zaloApi = {
             return null;
         }
     },
+
+    async getFile(fileId) {
+        try {
+            const res = await axios.post(`${ZALO_API_BASE}/getFile`, {
+                file_id: fileId,
+            });
+            return res.data;
+        } catch (err) {
+            console.error('[Zalo API] getFile error:', err.message);
+            return null;
+        }
+    },
+
+    async downloadFile(url) {
+        try {
+            const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
+            return Buffer.from(res.data);
+        } catch (err) {
+            console.error('[Zalo API] downloadFile error:', err.message);
+            return null;
+        }
+    },
 };
 
 module.exports = zaloApi;

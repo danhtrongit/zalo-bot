@@ -13,6 +13,9 @@ data/*.db-shm
 *.db
 *.sqlite
 
+# Uploaded images
+public/uploads/
+
 # OS files
 .DS_Store
 Thumbs.db
