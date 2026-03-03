@@ -62,6 +62,13 @@ function navigateTo(page) {
         case 'expenses':
             expensesPage = 1;
             loadExpenses();
+            // Admin: show pending actions; User: hide admin-only
+            if (currentUser?.is_admin) {
+                loadPendingActions();
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
+            } else {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+            }
             break;
         case 'categories':
             loadCategories();
@@ -127,7 +134,7 @@ async function apiDelete(endpoint) {
 // ============= Auth & User Info =============
 async function loadCurrentUser() {
     try {
-        const res = await fetch('/api/auth/me');
+        const res = await fetch('/api/me');
         if (res.status === 401) {
             window.location.href = '/login';
             return;
@@ -139,17 +146,38 @@ async function loadCurrentUser() {
             const roleEl = document.getElementById('sidebar-user-role');
             if (nameEl) nameEl.textContent = currentUser.display_name || 'User';
             if (roleEl) {
-                roleEl.textContent = currentUser.role === 'admin' ? '🛡️ Admin' : '👤 User';
+                roleEl.textContent = currentUser.is_admin ? '🛡️ Admin' : '👤 Nhân viên';
             }
-            // Show/hide admin-only nav items
-            const usersNav = document.getElementById('nav-users');
-            if (usersNav && currentUser.role !== 'admin') {
-                usersNav.style.display = 'none';
+
+            const isAdmin = currentUser.is_admin;
+
+            // Hide admin-only nav items for regular users
+            ['nav-users', 'nav-settings', 'nav-categories'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el && !isAdmin) el.style.display = 'none';
+            });
+
+            // Show pending actions badge for admin
+            if (isAdmin) {
+                loadPendingCount();
             }
         }
     } catch (err) {
         console.error('Auth check error:', err);
     }
+}
+
+async function loadPendingCount() {
+    try {
+        const res = await apiGet('/pending-actions/count');
+        if (res.ok && res.result.count > 0) {
+            const badge = document.getElementById('pending-badge');
+            if (badge) {
+                badge.textContent = res.result.count;
+                badge.style.display = 'inline-flex';
+            }
+        }
+    } catch (e) { /* ignore */ }
 }
 
 // ============= Format Helpers =============
@@ -477,8 +505,6 @@ function openAddExpense() {
 
 async function editExpense(id) {
     try {
-        const res = await apiGet(`/expenses?search=&limit=1&offset=0`);
-        // Simple approach - load the expense directly
         document.getElementById('expense-modal-title').innerHTML = '<i class="fas fa-edit"></i> Sửa chi tiêu';
         document.getElementById('expense-edit-id').value = id;
         openModal('expense-modal');
@@ -499,20 +525,27 @@ async function saveExpense() {
     if (!amount || amount <= 0) return showToast('Vui lòng nhập số tiền hợp lệ', 'error');
     if (!category_id) return showToast('Vui lòng chọn danh mục', 'error');
 
-    try {
-        const data = {
-            description,
-            amount,
-            category_id: parseInt(category_id),
-            note,
-            created_by: 'dashboard',
-        };
+    const data = { description, amount, category_id: parseInt(category_id), note };
 
+    try {
         if (editId) {
-            await apiPut(`/expenses/${editId}`, data);
-            showToast('Đã cập nhật chi tiêu', 'success');
+            // Use pending action system (admin = direct, user = pending)
+            const res = await apiPost('/pending-actions', {
+                action_type: 'edit',
+                expense_id: parseInt(editId),
+                new_data: data,
+            });
+            if (res.ok) {
+                if (res.direct) {
+                    showToast('Đã cập nhật chi tiêu', 'success');
+                } else {
+                    showToast('Đã gửi yêu cầu sửa cho Admin duyệt', 'info');
+                }
+            } else {
+                showToast(res.error || 'Lỗi', 'error');
+            }
         } else {
-            await apiPost('/expenses', data);
+            await apiPost('/expenses', { ...data, created_by: 'dashboard' });
             showToast('Đã thêm chi tiêu mới', 'success');
         }
 
@@ -525,15 +558,96 @@ async function saveExpense() {
 }
 
 async function deleteExpenseItem(id) {
-    if (!confirm('Bạn có chắc muốn xóa chi tiêu này?')) return;
+    const isAdmin = currentUser?.is_admin;
+    const confirmMsg = isAdmin ? 'Bạn có chắc muốn xóa chi tiêu này?' : 'Gửi yêu cầu xóa cho Admin duyệt?';
+    if (!confirm(confirmMsg)) return;
     try {
-        await apiDelete(`/expenses/${id}`);
-        showToast('Đã xóa chi tiêu', 'success');
-        loadExpenses();
-        if (currentPage === 'dashboard') loadDashboard();
+        const res = await apiPost('/pending-actions', {
+            action_type: 'delete',
+            expense_id: id,
+        });
+        if (res.ok) {
+            if (res.direct) {
+                showToast('Đã xóa chi tiêu', 'success');
+            } else {
+                showToast('Đã gửi yêu cầu xóa cho Admin duyệt', 'info');
+            }
+            loadExpenses();
+            if (currentPage === 'dashboard') loadDashboard();
+        } else {
+            showToast(res.error || 'Lỗi', 'error');
+        }
     } catch (err) {
         showToast('Lỗi khi xóa', 'error');
     }
+}
+
+// ============= Pending Actions (Admin) =============
+async function loadPendingActions() {
+    try {
+        const res = await apiGet('/pending-actions');
+        if (res.ok) {
+            renderPendingActions(res.result);
+        }
+    } catch (err) { console.error(err); }
+}
+
+function renderPendingActions(actions) {
+    const container = document.getElementById('pending-actions-list');
+    if (!container) return;
+    if (!actions || actions.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding:20px;text-align:center;color:var(--text-muted);">Không có yêu cầu nào chờ duyệt</div>';
+        return;
+    }
+    container.innerHTML = actions.map(a => {
+        const actionIcon = a.action_type === 'delete' ? '🗑️ Xóa' : '✏️ Sửa';
+        const oldData = a.old_data ? JSON.parse(a.old_data) : {};
+        const newData = a.new_data ? JSON.parse(a.new_data) : {};
+        return `
+        <div class="pending-item" style="padding:12px;border:1px solid var(--border-color);border-radius:8px;margin-bottom:8px;background:var(--bg-card);">
+            <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;flex-wrap:wrap;">
+                <div>
+                    <span style="font-weight:600;color:${a.action_type === 'delete' ? '#ef4444' : '#f59e0b'};">${actionIcon}</span>
+                    <strong>#${a.expense_id}</strong> — ${a.expense_description || oldData.description || '?'}
+                    <span style="color:var(--text-muted);font-size:0.85rem;">(${formatCurrency(a.expense_amount || oldData.amount)})</span>
+                    <br><span style="font-size:0.8rem;color:var(--text-muted);">👤 ${a.requested_by_name} • ${formatDate(a.created_at)}</span>
+                    ${a.action_type === 'edit' && newData ? `<br><span style="font-size:0.8rem;color:#3b82f6;">→ ${newData.description || ''} ${newData.amount ? formatCurrency(newData.amount) : ''}</span>` : ''}
+                </div>
+                <div style="display:flex;gap:6px;">
+                    <button class="btn btn-primary btn-sm" onclick="approveAction(${a.id})"><i class="fas fa-check"></i> Duyệt</button>
+                    <button class="btn btn-danger btn-sm" onclick="rejectAction(${a.id})"><i class="fas fa-times"></i> Từ chối</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function approveAction(id) {
+    try {
+        const res = await apiPost(`/pending-actions/${id}/approve`);
+        if (res.ok) {
+            showToast('Đã duyệt', 'success');
+            loadPendingActions();
+            loadPendingCount();
+            loadExpenses();
+        } else { showToast(res.error || 'Lỗi', 'error'); }
+    } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+async function rejectAction(id) {
+    try {
+        const res = await apiPost(`/pending-actions/${id}/reject`);
+        if (res.ok) {
+            showToast('Đã từ chối', 'success');
+            loadPendingActions();
+            loadPendingCount();
+        } else { showToast(res.error || 'Lỗi', 'error'); }
+    } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+function togglePendingPanel() {
+    const list = document.getElementById('pending-actions-list');
+    if (list) list.style.display = list.style.display === 'none' ? '' : 'none';
 }
 
 // ============= Categories Page =============

@@ -104,16 +104,6 @@ app.get('/logout', (req, res) => {
 });
 
 // Get current user info
-app.get('/api/auth/me', apiAuthMiddleware, (req, res) => {
-    res.json({
-        ok: true,
-        result: {
-            zalo_user_id: req.user.zalo_user_id,
-            display_name: req.user.display_name,
-            role: req.user.role
-        }
-    });
-});
 
 // ============= Protected API Routes =============
 app.use('/api', apiAuthMiddleware, apiRoutes);

@@ -203,6 +203,20 @@
                 </div>
             </div>
 
+            <!-- Pending Actions (Admin only) -->
+            <div class="card admin-only" id="pending-actions-card"
+                style="margin-bottom:16px;border-left:3px solid #f59e0b;">
+                <div class="card-header" style="cursor:pointer;" onclick="togglePendingPanel()">
+                    <h3><i class="fas fa-bell" style="color:#f59e0b;"></i> Yêu cầu chờ duyệt
+                        <span id="pending-badge"
+                            style="display:none;background:#ef4444;color:#fff;border-radius:50%;padding:2px 7px;font-size:0.75rem;margin-left:6px;"></span>
+                    </h3>
+                </div>
+                <div id="pending-actions-list" style="padding:0 16px 16px;">
+                    <!-- Loaded dynamically -->
+                </div>
+            </div>
+
             <!-- Filters -->
             <div class="card filters-card">
                 <div class="filters-grid">

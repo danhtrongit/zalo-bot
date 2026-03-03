@@ -105,10 +105,41 @@ db.exec(`
     expires_at DATETIME NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- Pending actions (edit/delete requests needing admin approval)
+  CREATE TABLE IF NOT EXISTS pending_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action_type TEXT NOT NULL,
+    expense_id INTEGER NOT NULL,
+    requested_by TEXT NOT NULL,
+    requested_by_name TEXT DEFAULT '',
+    old_data TEXT,
+    new_data TEXT,
+    status TEXT DEFAULT 'pending',
+    reviewed_by TEXT,
+    reviewed_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (expense_id) REFERENCES expenses(id)
+  );
 `);
 
 // Migrations for existing databases
 try { db.prepare('ALTER TABLE expenses ADD COLUMN image_url TEXT').run(); } catch (e) { /* column already exists */ }
+try {
+  db.prepare(`CREATE TABLE IF NOT EXISTS pending_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action_type TEXT NOT NULL,
+    expense_id INTEGER NOT NULL,
+    requested_by TEXT NOT NULL,
+    requested_by_name TEXT DEFAULT '',
+    old_data TEXT,
+    new_data TEXT,
+    status TEXT DEFAULT 'pending',
+    reviewed_by TEXT,
+    reviewed_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)`).run();
+} catch (e) { /* table exists */ }
 
 // Seed default categories
 const defaultCategories = [
@@ -498,6 +529,75 @@ const dao = {
   cleanExpiredSessions() {
     db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
     db.prepare("DELETE FROM login_tokens WHERE expires_at < datetime('now')").run();
+  },
+
+  // ---- Pending Actions ----
+  getExpenseById(id) {
+    return db.prepare(`
+      SELECT e.*, c.name as category_name, c.icon as category_icon
+      FROM expenses e LEFT JOIN categories c ON e.category_id = c.id
+      WHERE e.id = ?
+    `).get(id);
+  },
+
+  createPendingAction({ action_type, expense_id, requested_by, requested_by_name, old_data, new_data }) {
+    const result = db.prepare(`
+      INSERT INTO pending_actions (action_type, expense_id, requested_by, requested_by_name, old_data, new_data)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(action_type, expense_id, requested_by, requested_by_name,
+      old_data ? JSON.stringify(old_data) : null,
+      new_data ? JSON.stringify(new_data) : null);
+    return result.lastInsertRowid;
+  },
+
+  getPendingActions(status = 'pending') {
+    return db.prepare(`
+      SELECT pa.*, e.description as expense_description, e.amount as expense_amount
+      FROM pending_actions pa
+      LEFT JOIN expenses e ON pa.expense_id = e.id
+      WHERE pa.status = ?
+      ORDER BY pa.created_at DESC
+    `).all(status);
+  },
+
+  getPendingActionById(id) {
+    return db.prepare('SELECT * FROM pending_actions WHERE id = ?').get(id);
+  },
+
+  countPendingActions() {
+    const row = db.prepare("SELECT COUNT(*) as count FROM pending_actions WHERE status = 'pending'").get();
+    return row.count;
+  },
+
+  approvePendingAction(actionId, reviewedBy) {
+    const action = db.prepare('SELECT * FROM pending_actions WHERE id = ? AND status = ?').get(actionId, 'pending');
+    if (!action) return null;
+
+    if (action.action_type === 'delete') {
+      db.prepare('DELETE FROM expenses WHERE id = ?').run(action.expense_id);
+    } else if (action.action_type === 'edit') {
+      const newData = JSON.parse(action.new_data);
+      const sets = [];
+      const vals = [];
+      if (newData.description !== undefined) { sets.push('description = ?'); vals.push(newData.description); }
+      if (newData.amount !== undefined) { sets.push('amount = ?'); vals.push(newData.amount); }
+      if (newData.category_id !== undefined) { sets.push('category_id = ?'); vals.push(newData.category_id); }
+      if (newData.note !== undefined) { sets.push('note = ?'); vals.push(newData.note); }
+      if (sets.length > 0) {
+        sets.push("updated_at = CURRENT_TIMESTAMP");
+        vals.push(action.expense_id);
+        db.prepare(`UPDATE expenses SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      }
+    }
+
+    db.prepare(`UPDATE pending_actions SET status = 'approved', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(reviewedBy, actionId);
+    return action;
+  },
+
+  rejectPendingAction(actionId, reviewedBy) {
+    db.prepare(`UPDATE pending_actions SET status = 'rejected', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(reviewedBy, actionId);
   }
 };
 
