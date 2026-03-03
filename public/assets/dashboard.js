@@ -1131,11 +1131,11 @@ async function saveCompanySettings() {
     }
 }
 
-// ============= Payment Request =============
+// ============= Payment Request PDF =============
 function generatePaymentRequest() {
-    const fromDate = document.getElementById('report-from')?.value || '';
-    const toDate = document.getElementById('report-to')?.value || '';
-    const userId = document.getElementById('report-user')?.value || '';
+    const fromDate = document.getElementById('pr-filter-from')?.value || document.getElementById('filter-from')?.value || '';
+    const toDate = document.getElementById('pr-filter-to')?.value || document.getElementById('filter-to')?.value || '';
+    const userId = document.getElementById('pr-filter-user')?.value || document.getElementById('filter-user')?.value || '';
 
     const params = new URLSearchParams();
     if (fromDate) params.append('from_date', fromDate);
