@@ -623,5 +623,20 @@ router.get('/my-expenses', (req, res) => {
         res.status(500).json({ ok: false, error: err.message });
     }
 });
+// ============= Admin Data Management =============
+router.post('/admin/clear-data', adminOnly, (req, res) => {
+    try {
+        const { zalo_user_id } = req.body;
+        if (zalo_user_id) {
+            const result = dao.clearUserData(zalo_user_id);
+            res.json({ ok: true, message: `Đã xóa dữ liệu user ${zalo_user_id}`, result });
+        } else {
+            dao.clearAllData();
+            res.json({ ok: true, message: 'Đã xóa toàn bộ dữ liệu' });
+        }
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
 
 module.exports = router;

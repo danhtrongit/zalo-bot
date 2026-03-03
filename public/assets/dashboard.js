@@ -76,6 +76,12 @@ function navigateTo(page) {
         case 'settings':
             loadBotInfo();
             loadCompanySettings();
+            loadClearDataUserList();
+            if (currentUser?.is_admin) {
+                document.querySelectorAll('#page-settings .admin-only').forEach(el => el.style.display = '');
+            } else {
+                document.querySelectorAll('#page-settings .admin-only').forEach(el => el.style.display = 'none');
+            }
             break;
         case 'users':
             loadUsers();
@@ -1128,6 +1134,57 @@ async function saveCompanySettings() {
         }
     } catch (err) {
         showToast('Lỗi khi lưu', 'error');
+    }
+}
+
+// ============= Admin Data Management =============
+async function loadClearDataUserList() {
+    if (!currentUser?.is_admin) return;
+    try {
+        const res = await apiGet('/users');
+        if (res.ok) {
+            const select = document.getElementById('clear-data-user');
+            if (!select) return;
+            select.innerHTML = '<option value="">-- Chọn người dùng --</option>';
+            res.result.forEach(u => {
+                select.innerHTML += `<option value="${u.zalo_user_id}">${escapeHtml(u.display_name || u.zalo_user_id)}</option>`;
+            });
+        }
+    } catch (err) { }
+}
+
+async function clearUserData() {
+    const userId = document.getElementById('clear-data-user')?.value;
+    if (!userId) return showToast('Vui lòng chọn người dùng', 'error');
+    const userName = document.getElementById('clear-data-user')?.selectedOptions[0]?.textContent || userId;
+    if (!confirm(`⚠️ Xóa TOÀN BỘ dữ liệu của "${userName}"?\n\nBao gồm: chi tiêu, thanh toán, tạm ứng.\nHành động này KHÔNG THỂ hoàn tác!`)) return;
+    if (!confirm(`Xác nhận lần 2: Bạn CHẮC CHẮN muốn xóa dữ liệu của "${userName}"?`)) return;
+    try {
+        const res = await apiPost('/admin/clear-data', { zalo_user_id: userId });
+        if (res.ok) {
+            showToast(`Đã xóa dữ liệu của ${userName}`, 'success');
+        } else {
+            showToast(res.error || 'Lỗi', 'error');
+        }
+    } catch (err) {
+        showToast('Lỗi khi xóa', 'error');
+    }
+}
+
+async function clearAllData() {
+    if (!confirm('⚠️ CẢNH BÁO: Bạn sắp xóa TOÀN BỘ dữ liệu!\n\nBao gồm: TẤT CẢ chi tiêu, thanh toán, tạm ứng, lịch sử.\nHành động này KHÔNG THỂ hoàn tác!')) return;
+    const code = prompt('Nhập "XOA" để xác nhận xóa toàn bộ:');
+    if (code !== 'XOA') return showToast('Mã xác nhận không đúng', 'error');
+    try {
+        const res = await apiPost('/admin/clear-data', {});
+        if (res.ok) {
+            showToast('Đã xóa toàn bộ dữ liệu!', 'success');
+            loadDashboard();
+        } else {
+            showToast(res.error || 'Lỗi', 'error');
+        }
+    } catch (err) {
+        showToast('Lỗi khi xóa', 'error');
     }
 }
 

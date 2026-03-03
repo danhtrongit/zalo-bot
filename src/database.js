@@ -833,6 +833,31 @@ const dao = {
     db.prepare(`UPDATE advances SET status = 'settled', settled_at = CURRENT_TIMESTAMP, settled_amount = ?, note = COALESCE(note || ' | ' || ?, note) WHERE id = ?`)
       .run(settledAmount, note || '', id);
   },
+
+  // ---- Data Management (Admin) ----
+  clearAllData() {
+    db.prepare('DELETE FROM edit_history').run();
+    db.prepare('DELETE FROM pending_actions').run();
+    db.prepare('DELETE FROM payment_requests').run();
+    db.prepare('DELETE FROM advances').run();
+    db.prepare('DELETE FROM expenses').run();
+    return { ok: true };
+  },
+
+  clearUserData(zaloUserId) {
+    // Get user expense IDs first
+    const expenses = db.prepare('SELECT id FROM expenses WHERE zalo_user_id = ?').all(zaloUserId);
+    const expenseIds = expenses.map(e => e.id);
+    if (expenseIds.length > 0) {
+      const placeholders = expenseIds.map(() => '?').join(',');
+      db.prepare(`DELETE FROM edit_history WHERE expense_id IN (${placeholders})`).run(...expenseIds);
+      db.prepare(`DELETE FROM pending_actions WHERE expense_id IN (${placeholders})`).run(...expenseIds);
+    }
+    db.prepare('DELETE FROM payment_requests WHERE requested_by = ?').run(zaloUserId);
+    db.prepare('DELETE FROM advances WHERE zalo_user_id = ?').run(zaloUserId);
+    db.prepare('DELETE FROM expenses WHERE zalo_user_id = ?').run(zaloUserId);
+    return { ok: true, deleted_expenses: expenseIds.length };
+  },
 };
 
 module.exports = { db, dao };

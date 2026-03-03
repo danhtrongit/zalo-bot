@@ -496,6 +496,40 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Danger Zone (Admin only) -->
+            <div class="card admin-only" style="grid-column: 1 / -1; border: 2px solid #dc3545;">
+                <div class="card-header" style="background:rgba(220,53,69,0.08);">
+                    <h3 style="color:#dc3545;"><i class="fas fa-exclamation-triangle"></i> Vùng nguy hiểm</h3>
+                </div>
+                <div class="card-body">
+                    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;">
+                        <!-- Clear by user -->
+                        <div style="flex:1;min-width:250px;">
+                            <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px;">
+                                Xóa toàn bộ chi tiêu, thanh toán, tạm ứng của <strong>1 người dùng</strong>.
+                            </p>
+                            <div style="display:flex;gap:8px;">
+                                <select id="clear-data-user" class="input" style="flex:1;">
+                                    <option value="">-- Chọn người dùng --</option>
+                                </select>
+                                <button class="btn btn-outline-danger" onclick="clearUserData()">
+                                    <i class="fas fa-user-times"></i> Xóa user
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Clear all -->
+                        <div style="flex:1;min-width:250px;">
+                            <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px;">
+                                Xóa <strong>TẤT CẢ</strong> chi tiêu, thanh toán, tạm ứng. Không thể hoàn tác!
+                            </p>
+                            <button class="btn btn-danger" onclick="clearAllData()">
+                                <i class="fas fa-trash-alt"></i> Xóa toàn bộ dữ liệu
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- ============= USERS PAGE ============= -->
