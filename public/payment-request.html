@@ -460,18 +460,7 @@
                     </div>
                 </div>` : ''}
 
-                ${hasImages ? `
-                <div class="attachments">
-                    <h4>Chứng từ đính kèm (${userExpenses.filter(e => e.image_url).length} ảnh):</h4>
-                    <div class="att-grid">
-                        ${userExpenses.filter(e => e.image_url).map((e, i) => `
-                            <div class="att-item">
-                                <img src="${e.image_url}" class="att-img" alt="receipt-${i + 1}">
-                                <div class="att-label">${i + 1}. ${e.description}</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>` : ''}
+                ${hasImages ? `<div style="margin-top:10px;font-size:12px;font-style:italic;">Kèm theo ${userExpenses.filter(e => e.image_url).length} ảnh chứng từ (xem phụ lục)</div>` : ''}
 
                 <div class="signatures">
                     <div class="sig-block">
@@ -490,7 +479,26 @@
                         <div class="sig-name">${settings.approver_name || ''}</div>
                     </div>
                 </div>
-            </div>`;
+            </div>
+
+            ${hasImages ? `
+            <div class="page-container page-break">
+                <div class="doc-header">
+                    <div class="company-name">${companyName}</div>
+                    <div class="doc-title" style="font-size:16px;margin-top:10px;">PHỤ LỤC: CHỨNG TỪ ĐÍNH KÈM</div>
+                    <div class="doc-date">Người đề nghị: ${userId ? requester_name : userName} — ${today}</div>
+                </div>
+                <div class="attachments">
+                    ${userExpenses.filter(e => e.image_url).map((e, i) => `
+                        <div class="att-item" style="margin-bottom:20px;width:100%;text-align:center;">
+                            <div class="att-label" style="font-size:12px;font-weight:bold;margin-bottom:5px;">
+                                ${i + 1}. ${e.description} — ${formatCurrency(e.amount)} VNĐ — ${formatDate(e.created_at)}
+                            </div>
+                            <img src="${e.image_url}" class="att-img" style="max-width:100%;max-height:700px;width:auto;" alt="receipt-${i + 1}">
+                        </div>
+                    `).join('')}
+                </div>
+            </div>` : ''}`;
             });
 
             document.getElementById('content').innerHTML = html;
