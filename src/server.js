@@ -178,7 +178,9 @@ app.post('/webhooks', async (req, res) => {
 
     try {
         const body = req.body;
-        console.log('[Webhook] Received:', JSON.stringify(body).substring(0, 200));
+        // Log more for image messages to debug structure
+        const logLen = body.event_name?.includes('image') ? 2000 : 200;
+        console.log('[Webhook] Received:', JSON.stringify(body).substring(0, logLen));
 
         // Webhook sends data directly: {event_name, message, ...}
         // Polling wraps it: {ok: true, result: {event_name, message, ...}}
