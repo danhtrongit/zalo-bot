@@ -412,7 +412,7 @@
                         <tr>
                             <td class="text-center">${i + 1}</td>
                             <td>${e.description}${e.note ? ' (' + e.note + ')' : ''}</td>
-                            <td class="text-center">${e.category_icon || ''} ${e.category_name || 'Khác'}</td>
+                            <td class="text-center">${e.category_name || 'Khác'}</td>
                             <td class="text-center">${formatDate(e.created_at)}</td>
                             <td class="text-right">${formatCurrency(e.amount)}</td>
                         </tr>`).join('')}
