@@ -84,6 +84,15 @@ function navigateTo(page) {
         case 'users':
             loadUsers();
             break;
+        case 'payment-requests':
+            loadPaymentRequests();
+            break;
+        case 'advances':
+            loadAdvances();
+            break;
+        case 'deleted':
+            loadDeletedExpenses();
+            break;
     }
 }
 
@@ -507,6 +516,12 @@ async function editExpense(id) {
     try {
         document.getElementById('expense-modal-title').innerHTML = '<i class="fas fa-edit"></i> Sửa chi tiêu';
         document.getElementById('expense-edit-id').value = id;
+        // Show reason field for non-admin
+        const reasonGroup = document.getElementById('expense-reason-group');
+        if (reasonGroup) {
+            reasonGroup.style.display = currentUser?.is_admin ? 'none' : 'block';
+            document.getElementById('expense-reason').value = '';
+        }
         openModal('expense-modal');
         loadCategoriesFilter();
     } catch (err) {
@@ -520,20 +535,22 @@ async function saveExpense() {
     const amount = parseFloat(document.getElementById('expense-amount').value);
     const category_id = document.getElementById('expense-category').value;
     const note = document.getElementById('expense-note').value.trim();
+    const reason = document.getElementById('expense-reason')?.value?.trim() || '';
 
     if (!description) return showToast('Vui lòng nhập mô tả', 'error');
-    if (!amount || amount <= 0) return showToast('Vui lòng nhập số tiền hợp lệ', 'error');
+    if (!amount || amount < 1000) return showToast('Số tiền tối thiểu là 1.000 ₫', 'error');
     if (!category_id) return showToast('Vui lòng chọn danh mục', 'error');
+    if (editId && !currentUser?.is_admin && !reason) return showToast('Vui lòng nhập lý do sửa', 'error');
 
     const data = { description, amount, category_id: parseInt(category_id), note };
 
     try {
         if (editId) {
-            // Use pending action system (admin = direct, user = pending)
             const res = await apiPost('/pending-actions', {
                 action_type: 'edit',
                 expense_id: parseInt(editId),
                 new_data: data,
+                reason,
             });
             if (res.ok) {
                 if (res.direct) {
@@ -559,12 +576,19 @@ async function saveExpense() {
 
 async function deleteExpenseItem(id) {
     const isAdmin = currentUser?.is_admin;
-    const confirmMsg = isAdmin ? 'Bạn có chắc muốn xóa chi tiêu này?' : 'Gửi yêu cầu xóa cho Admin duyệt?';
-    if (!confirm(confirmMsg)) return;
+    let reason = '';
+    if (!isAdmin) {
+        reason = prompt('Nhập lý do xóa (bắt buộc):');
+        if (!reason) return showToast('Vui lòng nhập lý do xóa', 'error');
+    } else {
+        if (!confirm('Bạn có chắc muốn xóa chi tiêu này?')) return;
+        reason = 'Admin xóa trực tiếp';
+    }
     try {
         const res = await apiPost('/pending-actions', {
             action_type: 'delete',
             expense_id: id,
+            reason,
         });
         if (res.ok) {
             if (res.direct) {
@@ -1305,4 +1329,223 @@ function generatePaymentRequest() {
 
     const url = `/payment-request?${params.toString()}`;
     window.open(url, '_blank');
+}
+
+// ============= Payment Requests Page =============
+async function loadPaymentRequests() {
+    try {
+        const res = await apiGet('/payment-requests');
+        if (res.ok) renderPaymentRequestsTable(res.result);
+    } catch (err) {
+        showToast('Lỗi tải đề nghị thanh toán', 'error');
+    }
+}
+
+function renderPaymentRequestsTable(requests) {
+    const tbody = document.getElementById('payment-requests-body');
+    if (!requests.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Chưa có đề nghị thanh toán nào</td></tr>';
+        return;
+    }
+    tbody.innerHTML = requests.map(r => {
+        const statusBadge = {
+            pending: '<span class="badge bg-warning">Chờ duyệt</span>',
+            approved: '<span class="badge bg-info">Đã duyệt</span>',
+            paid: '<span class="badge bg-success">Đã thanh toán</span>',
+            rejected: '<span class="badge bg-danger">Từ chối</span>',
+        }[r.status] || r.status;
+
+        let actions = '';
+        if (currentUser?.is_admin && r.status === 'pending') {
+            actions = `<button class="btn btn-sm btn-outline-success" onclick="approvePaymentRequest(${r.id})"><i class="fas fa-check"></i></button>
+                       <button class="btn btn-sm btn-outline-danger" onclick="rejectPaymentRequest(${r.id})"><i class="fas fa-times"></i></button>`;
+        } else if (currentUser?.is_admin && r.status === 'approved') {
+            actions = `<button class="btn btn-sm btn-success" onclick="markPaymentRequestPaid(${r.id})"><i class="fas fa-money-bill"></i> Đã TT</button>`;
+        }
+
+        return `<tr>
+            <td>${r.id}</td>
+            <td>${escapeHtml(r.requested_by_name || 'N/A')}</td>
+            <td>${r.expense_count}</td>
+            <td class="fw-bold">${formatCurrency(r.total_amount)}</td>
+            <td>${statusBadge}</td>
+            <td>${formatDate(r.created_at)}</td>
+            <td>${actions}</td>
+        </tr>`;
+    }).join('');
+}
+
+function openCreatePaymentRequest() {
+    generatePaymentRequest();
+}
+
+async function approvePaymentRequest(id) {
+    if (!confirm('Duyệt đề nghị thanh toán này?')) return;
+    try {
+        await apiPost(`/payment-requests/${id}/approve`);
+        showToast('Đã duyệt đề nghị thanh toán', 'success');
+        loadPaymentRequests();
+    } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+async function markPaymentRequestPaid(id) {
+    if (!confirm('Xác nhận đã thanh toán?')) return;
+    try {
+        await apiPost(`/payment-requests/${id}/paid`);
+        showToast('Đã đánh dấu thanh toán', 'success');
+        loadPaymentRequests();
+    } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+async function rejectPaymentRequest(id) {
+    if (!confirm('Từ chối đề nghị thanh toán?')) return;
+    try {
+        await apiPost(`/payment-requests/${id}/reject`);
+        showToast('Đã từ chối', 'success');
+        loadPaymentRequests();
+    } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+// ============= Advances Page =============
+async function loadAdvances() {
+    try {
+        const res = await apiGet('/advances');
+        if (res.ok) renderAdvancesTable(res.result);
+    } catch (err) {
+        showToast('Lỗi tải danh sách tạm ứng', 'error');
+    }
+}
+
+function renderAdvancesTable(advances) {
+    const tbody = document.getElementById('advances-body');
+    if (!advances.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Chưa có yêu cầu tạm ứng nào</td></tr>';
+        return;
+    }
+    tbody.innerHTML = advances.map(a => {
+        const statusBadge = {
+            pending: '<span class="badge bg-warning">Chờ duyệt</span>',
+            approved: '<span class="badge bg-success">Đã duyệt</span>',
+            settled: '<span class="badge bg-info">Đã quyết toán</span>',
+            rejected: '<span class="badge bg-danger">Từ chối</span>',
+        }[a.status] || a.status;
+
+        let actions = '';
+        if (currentUser?.is_admin) {
+            if (a.status === 'pending') {
+                actions = `<button class="btn btn-sm btn-outline-success" onclick="approveAdvance(${a.id})"><i class="fas fa-check"></i></button>
+                           <button class="btn btn-sm btn-outline-danger" onclick="rejectAdvance(${a.id})"><i class="fas fa-times"></i></button>`;
+            } else if (a.status === 'approved') {
+                actions = `<button class="btn btn-sm btn-info text-white" onclick="settleAdvance(${a.id}, ${a.amount})"><i class="fas fa-calculator"></i> Quyết toán</button>`;
+            }
+        }
+
+        return `<tr>
+            <td>${a.id}</td>
+            <td>${escapeHtml(a.zalo_user_name || 'N/A')}</td>
+            <td class="fw-bold">${formatCurrency(a.amount)}</td>
+            <td>${escapeHtml(a.purpose || '')}</td>
+            <td>${statusBadge}</td>
+            <td>${formatDate(a.created_at)}</td>
+            <td>${actions}</td>
+        </tr>`;
+    }).join('');
+}
+
+function openCreateAdvance() {
+    document.getElementById('advance-amount').value = '';
+    document.getElementById('advance-purpose').value = '';
+    document.getElementById('advance-note').value = '';
+    openModal('advance-modal');
+}
+
+async function saveAdvance() {
+    const amount = parseFloat(document.getElementById('advance-amount').value);
+    const purpose = document.getElementById('advance-purpose').value.trim();
+    const note = document.getElementById('advance-note').value.trim();
+
+    if (!amount || amount < 1000) return showToast('Số tiền tối thiểu 1.000 ₫', 'error');
+    if (!purpose) return showToast('Vui lòng nhập mục đích', 'error');
+
+    try {
+        const res = await apiPost('/advances', { amount, purpose, note });
+        if (res.ok) {
+            closeModal('advance-modal');
+            showToast('Đã gửi yêu cầu tạm ứng', 'success');
+            loadAdvances();
+        } else {
+            showToast(res.error || 'Lỗi', 'error');
+        }
+    } catch (err) {
+        showToast('Lỗi khi gửi yêu cầu', 'error');
+    }
+}
+
+async function approveAdvance(id) {
+    if (!confirm('Duyệt yêu cầu tạm ứng?')) return;
+    try {
+        await apiPost(`/advances/${id}/approve`);
+        showToast('Đã duyệt tạm ứng', 'success');
+        loadAdvances();
+    } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+async function rejectAdvance(id) {
+    if (!confirm('Từ chối yêu cầu tạm ứng?')) return;
+    try {
+        await apiPost(`/advances/${id}/reject`);
+        showToast('Đã từ chối', 'success');
+        loadAdvances();
+    } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+async function settleAdvance(id, originalAmount) {
+    const settledAmount = prompt(`Số tiền quyết toán (tạm ứng: ${formatCurrency(originalAmount)}):`, originalAmount);
+    if (settledAmount === null) return;
+    const note = prompt('Ghi chú quyết toán:') || '';
+    try {
+        await apiPost(`/advances/${id}/settle`, { settled_amount: parseFloat(settledAmount) || 0, note });
+        showToast('Đã quyết toán', 'success');
+        loadAdvances();
+    } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+// ============= Deleted Expenses Page =============
+async function loadDeletedExpenses() {
+    try {
+        const res = await apiGet('/expenses/deleted');
+        if (res.ok) renderDeletedTable(res.result);
+    } catch (err) {
+        showToast('Lỗi tải danh sách đã xóa', 'error');
+    }
+}
+
+function renderDeletedTable(deleted) {
+    const tbody = document.getElementById('deleted-body');
+    if (!deleted.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Không có mục nào đã xóa</td></tr>';
+        return;
+    }
+    tbody.innerHTML = deleted.map(e => {
+        const restoreBtn = currentUser?.is_admin
+            ? `<button class="btn btn-sm btn-outline-success" onclick="restoreExpense(${e.id})"><i class="fas fa-undo"></i> Khôi phục</button>`
+            : '';
+        return `<tr>
+            <td>${e.id}</td>
+            <td>${escapeHtml(e.description)}</td>
+            <td class="fw-bold">${formatCurrency(e.amount)}</td>
+            <td>${escapeHtml(e.delete_reason || '')}</td>
+            <td>${formatDate(e.deleted_at)}</td>
+            <td>${restoreBtn}</td>
+        </tr>`;
+    }).join('');
+}
+
+async function restoreExpense(id) {
+    if (!confirm('Khôi phục chi tiêu này?')) return;
+    try {
+        await apiPost(`/expenses/${id}/restore`);
+        showToast('Đã khôi phục', 'success');
+        loadDeletedExpenses();
+    } catch (err) { showToast('Lỗi', 'error'); }
 }

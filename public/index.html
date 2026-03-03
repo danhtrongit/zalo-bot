@@ -48,21 +48,37 @@
                 <span>Người dùng</span>
             </a>
         </nav>
+        <div class="sidebar-divider"></div>
+        <nav class="sidebar-nav">
+            <small class="sidebar-section-label">Quản lý</small>
+            <a href="#" class="nav-item" data-page="payment-requests" id="nav-payment-requests">
+                <i class="fas fa-file-invoice-dollar"></i>
+                <span>Đề nghị TT</span>
+            </a>
+            <a href="#" class="nav-item" data-page="advances" id="nav-advances">
+                <i class="fas fa-hand-holding-usd"></i>
+                <span>Tạm ứng</span>
+            </a>
+            <a href="#" class="nav-item" data-page="deleted" id="nav-deleted">
+                <i class="fas fa-trash-alt"></i>
+                <span>Đã xóa</span>
+            </a>
+        </nav>
         <div class="sidebar-footer">
             <div class="user-info" id="user-info">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                     <div
-                        style="width:28px;height:28px;border-radius:50%;background:rgba(0,88,42,0.5);display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#fff;">
+                        style="width:28px;height:28px;border-radius:50%;background:rgba(0,88,42,0.15);display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#00582a;">
                         <i class="fas fa-user"></i>
                     </div>
                     <div>
-                        <div style="font-size:0.8rem;color:rgba(255,255,255,0.85);font-weight:600;"
-                            id="sidebar-user-name">Đang tải...</div>
-                        <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);" id="sidebar-user-role"></div>
+                        <div style="font-size:0.8rem;color:#1a2e23;font-weight:600;" id="sidebar-user-name">Đang tải...
+                        </div>
+                        <div style="font-size:0.7rem;color:#8a9590;" id="sidebar-user-role"></div>
                     </div>
                 </div>
                 <a href="/logout" class="btn btn-sm"
-                    style="width:100%;justify-content:center;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.1);font-size:0.78rem;">
+                    style="width:100%;justify-content:center;color:#5a6b62;border:1px solid #e2e8e4;font-size:0.78rem;">
                     <i class="fas fa-sign-out-alt"></i> Đăng xuất
                 </a>
             </div>
@@ -648,6 +664,99 @@
                 </div>
             </div>
         </section>
+
+        <!-- ============= PAYMENT REQUESTS PAGE ============= -->
+        <section class="page" id="page-payment-requests">
+            <div class="page-header">
+                <div>
+                    <h1>Đề nghị thanh toán</h1>
+                    <p class="page-subtitle">Quản lý yêu cầu thanh toán chi tiêu</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="openCreatePaymentRequest()">
+                        <i class="fas fa-plus"></i> Tạo đề nghị
+                    </button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body table-responsive">
+                    <table class="table table-hover" id="payment-requests-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Người yêu cầu</th>
+                                <th>Số GD</th>
+                                <th>Tổng tiền</th>
+                                <th>Trạng thái</th>
+                                <th>Ngày tạo</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="payment-requests-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============= ADVANCES PAGE ============= -->
+        <section class="page" id="page-advances">
+            <div class="page-header">
+                <div>
+                    <h1>Tạm ứng</h1>
+                    <p class="page-subtitle">Quản lý tạm ứng & hoàn ứng</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="openCreateAdvance()">
+                        <i class="fas fa-plus"></i> Yêu cầu tạm ứng
+                    </button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body table-responsive">
+                    <table class="table table-hover" id="advances-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Người yêu cầu</th>
+                                <th>Số tiền</th>
+                                <th>Mục đích</th>
+                                <th>Trạng thái</th>
+                                <th>Ngày tạo</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="advances-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============= DELETED PAGE ============= -->
+        <section class="page" id="page-deleted">
+            <div class="page-header">
+                <div>
+                    <h1><i class="fas fa-trash-alt"></i> Mục đã xóa</h1>
+                    <p class="page-subtitle">Các chi tiêu đã xóa (có thể khôi phục)</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body table-responsive">
+                    <table class="table table-hover" id="deleted-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Mô tả</th>
+                                <th>Số tiền</th>
+                                <th>Lý do xóa</th>
+                                <th>Ngày xóa</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deleted-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
     </main>
 
     <!-- ============= MODALS ============= -->
@@ -671,7 +780,7 @@
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Số tiền (VND) *</label>
                             <input type="number" id="expense-amount" class="form-control" placeholder="VD: 5000000"
-                                min="0">
+                                min="1000">
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Danh mục *</label>
@@ -682,8 +791,13 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Ghi chú</label>
-                        <textarea id="expense-note" class="form-control" rows="3"
+                        <textarea id="expense-note" class="form-control" rows="2"
                             placeholder="Ghi chú thêm..."></textarea>
+                    </div>
+                    <div class="mb-3" id="expense-reason-group" style="display:none;">
+                        <label class="form-label">Lý do sửa/xóa <span class="text-danger">*</span></label>
+                        <input type="text" id="expense-reason" class="form-control"
+                            placeholder="Nhập lý do để admin duyệt...">
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -768,6 +882,41 @@
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
                     <button type="button" class="btn btn-success" onclick="saveUser()">
                         <i class="fas fa-save"></i> Lưu
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Advance Modal -->
+    <div class="modal fade" id="advance-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-hand-holding-usd"></i> Yêu cầu tạm ứng</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Số tiền (VND) *</label>
+                        <input type="number" id="advance-amount" class="form-control" min="1000"
+                            placeholder="VD: 5000000">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Mục đích *</label>
+                        <input type="text" id="advance-purpose" class="form-control"
+                            placeholder="VD: Mua vật tư sản xuất">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ghi chú</label>
+                        <textarea id="advance-note" class="form-control" rows="2"
+                            placeholder="Ghi chú thêm..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" class="btn btn-success" onclick="saveAdvance()">
+                        <i class="fas fa-save"></i> Gửi yêu cầu
                     </button>
                 </div>
             </div>
