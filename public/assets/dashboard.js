@@ -424,21 +424,21 @@ function renderExpensesTable(expenses) {
 
     tbody.innerHTML = expenses.map(e => `
     <tr>
-      <td><strong>#${e.id}</strong></td>
-      <td>${escapeHtml(e.description)}</td>
-      <td>
+      <td data-label="ID"><strong>#${e.id}</strong></td>
+      <td data-label="Mô tả">${escapeHtml(e.description)}</td>
+      <td data-label="Danh mục">
         <span class="category-badge" style="background:${e.category_color || '#9E9E9E'}20;color:${e.category_color || '#9E9E9E'}">
           ${e.category_icon || '📦'} ${e.category_name || 'Chưa phân loại'}
         </span>
       </td>
-      <td class="amount">${formatCurrency(e.amount)}</td>
-      <td>${e.image_url
-            ? `<a href="${e.image_url}" target="_blank" title="Xem ảnh hoá đơn"><img src="${e.image_url}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--border);" alt="bill"></a>`
+      <td data-label="Số tiền" class="amount">${formatCurrency(e.amount)}</td>
+      <td data-label="Ảnh">${e.image_url
+            ? `<a href="${e.image_url}" target="_blank" title="Xem ảnh hoá đơn"><img src="${e.image_url}" class="receipt-thumb" style="width:40px;height:40px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--border);" alt="bill"></a>`
             : '<span style="color:var(--text-muted)">-</span>'}</td>
-      <td>${escapeHtml(e.note || '-')}</td>
-      <td>${e.zalo_user_name || e.created_by || '-'}</td>
-      <td class="time-text">${formatDate(e.created_at)}</td>
-      <td>
+      <td data-label="Ghi chú">${escapeHtml(e.note || '-')}</td>
+      <td data-label="Người">${e.zalo_user_name || e.created_by || '-'}</td>
+      <td data-label="Ngày" class="time-text">${formatDate(e.created_at)}</td>
+      <td data-label="">
         <div style="display:flex;gap:4px;">
           <button class="btn-icon" onclick="editExpense(${e.id})" title="Sửa"><i class="fas fa-edit"></i></button>
           <button class="btn-icon delete" onclick="deleteExpenseItem(${e.id})" title="Xóa"><i class="fas fa-trash"></i></button>
