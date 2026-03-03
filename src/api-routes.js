@@ -572,7 +572,8 @@ router.post('/advances', (req, res) => {
 
 router.get('/advances', (req, res) => {
     try {
-        const userId = isAdmin(req) ? null : req.user.zalo_user_id;
+        const { zalo_user_id } = req.query;
+        const userId = isAdmin(req) ? (zalo_user_id || null) : req.user.zalo_user_id;
         const advances = dao.getAdvances(userId);
         res.json({ ok: true, result: advances });
     } catch (err) {

@@ -1270,6 +1270,7 @@ function onPRUserChange() {
         loadUserExpenseHistory(userId);
     } else {
         document.getElementById('user-expense-history-card').style.display = 'none';
+        document.getElementById('advance-expense-summary').style.display = 'none';
     }
     loadPaymentRequests();
 }
@@ -1281,12 +1282,54 @@ async function loadUserExpenseHistory(userId) {
         const params = new URLSearchParams();
         if (from_date) params.append('from_date', from_date);
         if (to_date) params.append('to_date', to_date);
-        const res = await apiGet(`/expenses/user-payment/${userId}?${params}`);
-        if (res.ok) {
-            renderUserExpenseHistory(res.result);
+
+        // Fetch expenses and advances in parallel
+        const [expRes, advRes] = await Promise.all([
+            apiGet(`/expenses/user-payment/${userId}?${params}`),
+            apiGet(`/advances?zalo_user_id=${userId}`),
+        ]);
+
+        if (expRes.ok) {
+            const expenses = expRes.result;
+            renderUserExpenseHistory(expenses);
             const user = prUsersList.find(u => u.zalo_user_id === userId);
             document.getElementById('pr-selected-user-name').textContent = user?.display_name || userId;
             document.getElementById('user-expense-history-card').style.display = 'block';
+
+            // Compute advance vs expense summary
+            const advances = (advRes.ok ? advRes.result : []).filter(a => a.status === 'approved' || a.status === 'settled');
+            const totalAdvance = advances.reduce((s, a) => s + (a.amount || 0), 0);
+            const totalSettled = advances.filter(a => a.status === 'settled').reduce((s, a) => s + (a.settled_amount || 0), 0);
+            const availableAdvance = totalAdvance - totalSettled;
+
+            const totalUnpaid = expenses.filter(e => !e.payment_status || e.payment_status === 'unpaid')
+                .reduce((s, e) => s + (e.amount || 0), 0);
+
+            const net = totalUnpaid - availableAdvance;
+
+            document.getElementById('summary-total-advance').textContent = formatCurrency(availableAdvance);
+            document.getElementById('summary-total-unpaid').textContent = formatCurrency(totalUnpaid);
+
+            const netEl = document.getElementById('summary-net-amount');
+            const labelEl = document.getElementById('summary-net-label');
+
+            if (net > 0) {
+                netEl.textContent = formatCurrency(net);
+                netEl.style.color = '#dc2626';
+                labelEl.textContent = '→ Cần thanh toán thêm';
+                labelEl.style.color = '#dc2626';
+            } else if (net < 0) {
+                netEl.textContent = formatCurrency(Math.abs(net));
+                netEl.style.color = '#059669';
+                labelEl.textContent = '→ Còn dư tạm ứng (không cần TT thêm)';
+                labelEl.style.color = '#059669';
+            } else {
+                netEl.textContent = '0 ₫';
+                netEl.style.color = '#6b7280';
+                labelEl.textContent = '→ Vừa đủ, không cần TT thêm';
+                labelEl.style.color = '#6b7280';
+            }
+            document.getElementById('advance-expense-summary').style.display = 'block';
         }
     } catch (err) { showToast('Lỗi tải lịch sử', 'error'); }
 }

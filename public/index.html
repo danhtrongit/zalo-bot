@@ -653,6 +653,29 @@
                     <h3><i class="fas fa-user-clock"></i> Lịch sử chi tiêu: <span id="pr-selected-user-name"></span>
                     </h3>
                 </div>
+                <!-- Advance vs Expense Summary -->
+                <div id="advance-expense-summary"
+                    style="display:none;padding:16px 20px;background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-bottom:1px solid #d1fae5;">
+                    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:center;">
+                        <div style="flex:1;min-width:120px;text-align:center;">
+                            <div style="font-size:0.75rem;color:#6b7280;">💰 Tổng tạm ứng</div>
+                            <div style="font-size:1.1rem;font-weight:700;color:#059669;" id="summary-total-advance">0 ₫
+                            </div>
+                        </div>
+                        <div style="font-size:1.2rem;color:#9ca3af;">−</div>
+                        <div style="flex:1;min-width:120px;text-align:center;">
+                            <div style="font-size:0.75rem;color:#6b7280;">📋 Chi tiêu chưa TT</div>
+                            <div style="font-size:1.1rem;font-weight:700;color:#dc2626;" id="summary-total-unpaid">0 ₫
+                            </div>
+                        </div>
+                        <div style="font-size:1.2rem;color:#9ca3af;">=</div>
+                        <div style="flex:1;min-width:140px;text-align:center;">
+                            <div style="font-size:0.75rem;color:#6b7280;">📊 Kết quả</div>
+                            <div style="font-size:1.2rem;font-weight:800;" id="summary-net-amount">0 ₫</div>
+                            <div style="font-size:0.7rem;" id="summary-net-label"></div>
+                        </div>
+                    </div>
+                </div>
                 <div class="card-body table-responsive">
                     <table class="table table-sm table-hover">
                         <thead>
