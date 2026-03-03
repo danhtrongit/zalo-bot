@@ -1,0 +1,31 @@
+{
+  "name": "vietnew-zalo-bot",
+  "version": "1.0.0",
+  "description": "VIETNEW ENTERTAINMENT - Bot Quản Lý Chi Tiêu via Zalo",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "production": "NODE_ENV=production node src/server.js"
+  },
+  "keywords": [
+    "zalo",
+    "bot",
+    "expense",
+    "management"
+  ],
+  "author": "VIETNEW ENTERTAINMENT",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.13.6",
+    "better-sqlite3": "^12.6.2",
+    "chart.js": "^4.5.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "multer": "^2.1.0",
+    "uuid": "^13.0.0"
+  }
+}

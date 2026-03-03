@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIETNEW ENTERTAINMENT - Quản Lý Chi Tiêu</title>
+    <meta name="description" content="Dashboard quản lý chi tiêu chuyên nghiệp cho VIETNEW ENTERTAINMENT">
+    <link rel="icon" type="image/png" href="/logo-dashboard.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/assets/dashboard.css">
+</head>
+
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <img src="/logo-dashboard.png" alt="VietNew" class="sidebar-logo">
+            <span class="sidebar-title">Quản Lý Chi Tiêu</span>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-page="dashboard" id="nav-dashboard">
+                <i class="fas fa-chart-pie"></i>
+                <span>Tổng quan</span>
+            </a>
+            <a href="#" class="nav-item" data-page="expenses" id="nav-expenses">
+                <i class="fas fa-receipt"></i>
+                <span>Chi tiêu</span>
+            </a>
+            <a href="#" class="nav-item" data-page="categories" id="nav-categories">
+                <i class="fas fa-tags"></i>
+                <span>Danh mục</span>
+            </a>
+            <a href="#" class="nav-item" data-page="reports" id="nav-reports">
+                <i class="fas fa-chart-bar"></i>
+                <span>Báo cáo</span>
+            </a>
+            <a href="#" class="nav-item" data-page="settings" id="nav-settings">
+                <i class="fas fa-cog"></i>
+                <span>Cài đặt Bot</span>
+            </a>
+            <a href="#" class="nav-item" data-page="users" id="nav-users">
+                <i class="fas fa-users"></i>
+                <span>Người dùng</span>
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-info" id="user-info">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <div
+                        style="width:28px;height:28px;border-radius:50%;background:rgba(0,88,42,0.5);display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#fff;">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div>
+                        <div style="font-size:0.8rem;color:rgba(255,255,255,0.85);font-weight:600;"
+                            id="sidebar-user-name">Đang tải...</div>
+                        <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);" id="sidebar-user-role"></div>
+                    </div>
+                </div>
+                <a href="/logout" class="btn btn-sm"
+                    style="width:100%;justify-content:center;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.1);font-size:0.78rem;">
+                    <i class="fas fa-sign-out-alt"></i> Đăng xuất
+                </a>
+            </div>
+            <div class="bot-status" id="bot-status" style="margin-top:10px;">
+                <div class="status-dot offline"></div>
+                <span>Đang kết nối...</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Mobile header -->
+    <header class="mobile-header">
+        <button class="menu-toggle" id="menu-toggle">
+            <i class="fas fa-bars"></i>
+        </button>
+        <img src="/logo-dashboard.png" alt="VietNew" class="mobile-logo">
+        <span>Quản Lý Chi Tiêu</span>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+        <!-- ============= DASHBOARD PAGE ============= -->
+        <section class="page active" id="page-dashboard">
+            <div class="page-header">
+                <div>
+                    <h1>Tổng quan</h1>
+                    <p class="page-subtitle">VIETNEW ENTERTAINMENT - Quản lý chi tiêu tổng hợp</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="openAddExpense()">
+                        <i class="fas fa-plus"></i> Thêm chi tiêu
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stat Cards -->
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #00582a, #00803e);">
+                        <i class="fas fa-calendar-day"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Hôm nay</span>
+                        <span class="stat-value" id="stat-today">0 ₫</span>
+                        <span class="stat-count" id="stat-today-count">0 giao dịch</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #1a6b3c, #2ecc71);">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Tháng này</span>
+                        <span class="stat-value" id="stat-month">0 ₫</span>
+                        <span class="stat-count" id="stat-month-count">0 giao dịch</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #00582a, #004d24);">
+                        <i class="fas fa-coins"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Tổng cộng</span>
+                        <span class="stat-value" id="stat-total">0 ₫</span>
+                        <span class="stat-count" id="stat-total-count">0 giao dịch</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #e67e22, #f39c12);">
+                        <i class="fas fa-fire"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Trung bình/ngày</span>
+                        <span class="stat-value" id="stat-avg">0 ₫</span>
+                        <span class="stat-count">30 ngày gần nhất</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-chart-line"></i> Xu hướng chi tiêu 30 ngày</h3>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="chart-daily"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-chart-doughnut"></i> Phân bổ theo danh mục</h3>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="chart-category"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Expenses -->
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-history"></i> Chi tiêu gần đây</h3>
+                    <a href="#" class="btn btn-sm btn-outline" onclick="navigateTo('expenses')">Xem tất cả</a>
+                </div>
+                <div class="table-responsive">
+                    <table class="data-table" id="recent-table">
+                        <thead>
+                            <tr>
+                                <th>Mã</th>
+                                <th>Mô tả</th>
+                                <th>Danh mục</th>
+                                <th>Số tiền</th>
+                                <th>Người tạo</th>
+                                <th>Thời gian</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent-tbody">
+                            <tr>
+                                <td colspan="6" class="empty-state">Đang tải dữ liệu...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============= EXPENSES PAGE ============= -->
+        <section class="page" id="page-expenses">
+            <div class="page-header">
+                <div>
+                    <h1>Quản lý chi tiêu</h1>
+                    <p class="page-subtitle">Danh sách tổng hợp các khoản chi tiêu</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="openAddExpense()">
+                        <i class="fas fa-plus"></i> Thêm chi tiêu
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="card filters-card">
+                <div class="filters-grid">
+                    <div class="filter-group">
+                        <label>Tìm kiếm</label>
+                        <input type="text" id="filter-search" placeholder="Tìm theo mô tả..." class="input">
+                    </div>
+                    <div class="filter-group">
+                        <label>Danh mục</label>
+                        <select id="filter-category" class="input">
+                            <option value="">Tất cả</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Từ ngày</label>
+                        <input type="date" id="filter-from" class="input">
+                    </div>
+                    <div class="filter-group">
+                        <label>Đến ngày</label>
+                        <input type="date" id="filter-to" class="input">
+                    </div>
+                    <div class="filter-group filter-actions">
+                        <button class="btn btn-primary" onclick="loadExpenses()">
+                            <i class="fas fa-search"></i> Lọc
+                        </button>
+                        <button class="btn btn-outline" onclick="resetFilters()">
+                            <i class="fas fa-redo"></i> Reset
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Expenses Table -->
+            <div class="card">
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Mã</th>
+                                <th>Mô tả</th>
+                                <th>Danh mục</th>
+                                <th>Số tiền</th>
+                                <th>Ghi chú</th>
+                                <th>Người tạo</th>
+                                <th>Thời gian</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="expenses-tbody">
+                            <tr>
+                                <td colspan="8" class="empty-state">Đang tải dữ liệu...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="expenses-pagination"></div>
+            </div>
+        </section>
+
+        <!-- ============= CATEGORIES PAGE ============= -->
+        <section class="page" id="page-categories">
+            <div class="page-header">
+                <div>
+                    <h1>Quản lý danh mục</h1>
+                    <p class="page-subtitle">Phân loại các khoản chi tiêu</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="openAddCategory()">
+                        <i class="fas fa-plus"></i> Thêm danh mục
+                    </button>
+                </div>
+            </div>
+
+            <div class="categories-grid" id="categories-grid">
+                <!-- Categories will be loaded here -->
+            </div>
+        </section>
+
+        <!-- ============= REPORTS PAGE ============= -->
+        <section class="page" id="page-reports">
+            <div class="page-header">
+                <div>
+                    <h1>Báo cáo & Phân tích</h1>
+                    <p class="page-subtitle">Phân tích chi tiêu chi tiết</p>
+                </div>
+            </div>
+
+            <!-- Quick Filter Bar -->
+            <div class="card filters-card" style="margin-bottom:20px;">
+                <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
+                    <!-- Period Buttons -->
+                    <div class="report-period-btns" id="report-period-btns">
+                        <button class="period-btn active" data-period="week" onclick="setReportPeriod('week')">
+                            <i class="fas fa-calendar-week"></i> Tuần này
+                        </button>
+                        <button class="period-btn" data-period="month" onclick="setReportPeriod('month')">
+                            <i class="fas fa-calendar-alt"></i> Tháng này
+                        </button>
+                        <button class="period-btn" data-period="year" onclick="setReportPeriod('year')">
+                            <i class="fas fa-calendar"></i> Năm nay
+                        </button>
+                        <button class="period-btn" data-period="all" onclick="setReportPeriod('all')">
+                            <i class="fas fa-infinity"></i> Tất cả
+                        </button>
+                    </div>
+
+                    <div style="width:1px;height:28px;background:var(--border-color);"></div>
+
+                    <!-- User Selector -->
+                    <div class="filter-group" style="min-width:180px;">
+                        <label style="font-size:0.75rem;color:var(--text-muted);margin-bottom:2px;">Người dùng</label>
+                        <select id="report-user" class="input" onchange="loadReports()" style="font-size:0.85rem;">
+                            <option value="">👥 Tất cả</option>
+                        </select>
+                    </div>
+
+                    <div style="width:1px;height:28px;background:var(--border-color);"></div>
+
+                    <!-- Custom Date Range -->
+                    <div class="filter-group" style="display:flex;gap:6px;align-items:flex-end;">
+                        <div>
+                            <label style="font-size:0.75rem;color:var(--text-muted);margin-bottom:2px;">Từ ngày</label>
+                            <input type="date" id="report-from" class="input" style="font-size:0.85rem;">
+                        </div>
+                        <div>
+                            <label style="font-size:0.75rem;color:var(--text-muted);margin-bottom:2px;">Đến</label>
+                            <input type="date" id="report-to" class="input" style="font-size:0.85rem;">
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="setReportPeriod('custom')" style="height:36px;">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Report Summary Cards -->
+                <div
+                    style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);">
+                    <div style="text-align:center;">
+                        <div style="font-size:0.78rem;color:var(--text-muted);">Tổng chi tiêu</div>
+                        <div style="font-size:1.2rem;font-weight:700;color:var(--primary);" id="report-total">0 ₫</div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.78rem;color:var(--text-muted);">Số giao dịch</div>
+                        <div style="font-size:1.2rem;font-weight:700;color:#1a6b3c;" id="report-count">0</div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.78rem;color:var(--text-muted);">Trung bình/GD</div>
+                        <div style="font-size:1.2rem;font-weight:700;color:#e67e22;" id="report-avg">0 ₫</div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.78rem;color:var(--text-muted);">Danh mục</div>
+                        <div style="font-size:1.2rem;font-weight:700;color:#9333ea;" id="report-cat-count">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card full-width">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-chart-area"></i> Xu hướng chi tiêu theo tháng</h3>
+                    </div>
+                    <div class="chart-body" style="height:360px;">
+                        <canvas id="chart-monthly"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Expenses -->
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-trophy"></i> Top 10 khoản chi tiêu lớn nhất</h3>
+                </div>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Mô tả</th>
+                                <th>Danh mục</th>
+                                <th>Số tiền</th>
+                                <th>Thời gian</th>
+                            </tr>
+                        </thead>
+                        <tbody id="top-expenses-tbody">
+                            <tr>
+                                <td colspan="5" class="empty-state">Chọn khoảng thời gian và nhấn Cập nhật</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Category Summary -->
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-list-alt"></i> Tổng hợp theo danh mục</h3>
+                </div>
+                <div class="summary-bars" id="category-summary-bars">
+                    <!-- Will be loaded dynamically -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ============= SETTINGS PAGE ============= -->
+        <section class="page" id="page-settings">
+            <div class="page-header">
+                <div>
+                    <h1>Cài đặt Bot</h1>
+                    <p class="page-subtitle">Quản lý kết nối và cấu hình Zalo Bot</p>
+                </div>
+            </div>
+
+            <div class="settings-grid">
+                <!-- Bot Info -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-robot"></i> Thông tin Bot</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="info-row">
+                            <span class="info-label">Tên Bot</span>
+                            <span class="info-value" id="bot-name">Đang tải...</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Loại tài khoản</span>
+                            <span class="info-value" id="bot-type">-</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Chế độ</span>
+                            <span class="info-value" id="bot-mode">-</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Trạng thái</span>
+                            <span class="info-value" id="bot-connection-status">Đang kiểm tra...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Webhook Settings -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-link"></i> Cấu hình Webhook</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="info-row">
+                            <span class="info-label">Webhook URL hiện tại</span>
+                            <span class="info-value" id="webhook-url">Chưa cấu hình</span>
+                        </div>
+                        <div class="form-group" style="margin-top:16px;">
+                            <label>Webhook URL mới</label>
+                            <input type="url" id="new-webhook-url" class="input"
+                                placeholder="https://your-domain.com/webhooks">
+                        </div>
+                        <div class="btn-group" style="margin-top:12px;">
+                            <button class="btn btn-primary" onclick="setWebhookUrl()">
+                                <i class="fas fa-save"></i> Thiết lập Webhook
+                            </button>
+                            <button class="btn btn-danger" onclick="deleteWebhookUrl()">
+                                <i class="fas fa-trash"></i> Xóa Webhook
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Polling Settings -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-sync-alt"></i> Chế độ Polling</h3>
+                    </div>
+                    <div class="card-body">
+                        <p style="color:var(--text-secondary);margin-bottom:16px;">
+                            Chế độ Polling dùng cho development/testing. Không cần server HTTPS.
+                        </p>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" onclick="startPollingMode()">
+                                <i class="fas fa-play"></i> Bắt đầu Polling
+                            </button>
+                            <button class="btn btn-outline" onclick="stopPollingMode()">
+                                <i class="fas fa-stop"></i> Dừng Polling
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Settings -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-brain"></i> AI Agent</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="info-row">
+                            <span class="info-label">Model</span>
+                            <span class="info-value">gpt-5.3-codex</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Proxy</span>
+                            <span class="info-value">160.22.123.174:8317</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Chức năng</span>
+                            <span class="info-value">Phân tích & ghi nhận chi tiêu tự động</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============= USERS PAGE ============= -->
+        <section class="page" id="page-users">
+            <div class="page-header">
+                <div>
+                    <h1>Quản lý người dùng</h1>
+                    <p class="page-subtitle">Thêm / xóa người dùng được phép sử dụng Bot</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="openAddUser()">
+                        <i class="fas fa-user-plus"></i> Thêm người dùng
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-users"></i> Danh sách người dùng được phép</h3>
+                </div>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Zalo User ID</th>
+                                <th>Tên hiển thị</th>
+                                <th>Vai trò</th>
+                                <th>Trạng thái</th>
+                                <th>Ngày thêm</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-tbody">
+                            <tr>
+                                <td colspan="7" class="empty-state">Đang tải...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-info-circle"></i> Hướng dẫn</h3>
+                </div>
+                <div class="card-body">
+                    <p style="color:var(--text-secondary);line-height:1.8;">
+                        <strong>📌 Cách lấy Zalo User ID:</strong><br>
+                        • Người dùng nhắn bất kỳ tin nhắn nào cho Bot, Bot sẽ trả về ID của họ<br>
+                        • Hoặc gõ lệnh <code>/id</code> để xem ID<br><br>
+                        <strong>📌 Quyền truy cập:</strong><br>
+                        • <strong>Admin:</strong> Toàn quyền - quản lý người dùng, cài đặt bot, webhook<br>
+                        • <strong>User:</strong> Sử dụng bot nhắn tin, xem dashboard chi tiêu
+                    </p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ============= MODALS ============= -->
+    <!-- Add/Edit Expense Modal -->
+    <div class="modal-overlay" id="expense-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="expense-modal-title"><i class="fas fa-plus-circle"></i> Thêm chi tiêu mới</h3>
+                <button class="modal-close" onclick="closeModal('expense-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="expense-edit-id">
+                <div class="form-group">
+                    <label>Mô tả *</label>
+                    <input type="text" id="expense-desc" class="input" placeholder="VD: Thuê studio quay phim">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Số tiền (VND) *</label>
+                        <input type="number" id="expense-amount" class="input" placeholder="VD: 5000000" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Danh mục *</label>
+                        <select id="expense-category" class="input">
+                            <option value="">Chọn danh mục</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Ghi chú</label>
+                    <textarea id="expense-note" class="input" rows="3" placeholder="Ghi chú thêm..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeModal('expense-modal')">Hủy</button>
+                <button class="btn btn-primary" onclick="saveExpense()">
+                    <i class="fas fa-save"></i> Lưu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Category Modal -->
+    <div class="modal-overlay" id="category-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-tag"></i> Thêm danh mục</h3>
+                <button class="modal-close" onclick="closeModal('category-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Tên danh mục *</label>
+                    <input type="text" id="cat-name" class="input" placeholder="VD: Quỹ dự phòng">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Icon (emoji)</label>
+                        <input type="text" id="cat-icon" class="input" placeholder="📦" maxlength="4" value="📦">
+                    </div>
+                    <div class="form-group">
+                        <label>Màu sắc</label>
+                        <input type="color" id="cat-color" class="input input-color" value="#00582a">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeModal('category-modal')">Hủy</button>
+                <button class="btn btn-primary" onclick="saveCategory()">
+                    <i class="fas fa-save"></i> Lưu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add User Modal -->
+    <div class="modal-overlay" id="user-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-user-plus"></i> Thêm người dùng</h3>
+                <button class="modal-close" onclick="closeModal('user-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Zalo User ID *</label>
+                    <input type="text" id="user-zalo-id" class="input" placeholder="VD: e8991cb826edcfb396fc">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Tên hiển thị</label>
+                        <input type="text" id="user-display-name" class="input" placeholder="VD: Nguyễn Văn A">
+                    </div>
+                    <div class="form-group">
+                        <label>Vai trò</label>
+                        <select id="user-role" class="input">
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeModal('user-modal')">Hủy</button>
+                <button class="btn btn-primary" onclick="saveUser()">
+                    <i class="fas fa-save"></i> Lưu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="/assets/dashboard.js"></script>
+</body>
+
+</html>
