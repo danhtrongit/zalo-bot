@@ -81,7 +81,8 @@ function navigateTo(page) {
             loadUsers();
             break;
         case 'payment-requests':
-            loadPaymentRequests();
+            loadPRUsersFilter();
+            setPRPeriod(currentPRPeriod);
             break;
         case 'advances':
             loadAdvances();
@@ -1146,37 +1147,184 @@ function generatePaymentRequest() {
 }
 
 // ============= Payment Requests Page =============
+let currentPRPeriod = 'week';
+let prUsersList = [];
+
 async function loadPaymentRequests() {
     try {
-        const res = await apiGet('/payment-requests');
+        const from_date = document.getElementById('pr-filter-from')?.value || '';
+        const to_date = document.getElementById('pr-filter-to')?.value || '';
+        const zalo_user_id = document.getElementById('pr-filter-user')?.value || '';
+        const params = new URLSearchParams();
+        if (from_date) params.append('from_date', from_date);
+        if (to_date) params.append('to_date', to_date);
+        if (zalo_user_id) params.append('zalo_user_id', zalo_user_id);
+        const res = await apiGet(`/payment-requests?${params}`);
         if (res.ok) renderPaymentRequestsTable(res.result);
+        if (currentUser?.is_admin) {
+            document.querySelectorAll('#page-payment-requests .admin-only').forEach(el => el.style.display = '');
+        } else {
+            document.querySelectorAll('#page-payment-requests .admin-only').forEach(el => el.style.display = 'none');
+        }
     } catch (err) {
         showToast('Lỗi tải đề nghị thanh toán', 'error');
     }
 }
 
+function setPRPeriod(period) {
+    currentPRPeriod = period;
+    const now = new Date();
+    let fromDate = '', toDate = now.toISOString().split('T')[0];
+    if (period === 'week') {
+        const d = new Date(now); d.setDate(d.getDate() - d.getDay() + 1);
+        fromDate = d.toISOString().split('T')[0];
+    } else if (period === 'month') {
+        fromDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    } else { fromDate = ''; toDate = ''; }
+    document.getElementById('pr-filter-from').value = fromDate;
+    document.getElementById('pr-filter-to').value = toDate;
+    document.querySelectorAll('#pr-period-btns button').forEach(b => {
+        b.className = b.dataset.period === period ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline-secondary';
+    });
+    loadPaymentRequests();
+    const userId = document.getElementById('pr-filter-user')?.value;
+    if (userId) loadUserExpenseHistory(userId);
+}
+
+async function loadPRUsersFilter() {
+    if (!currentUser?.is_admin) return;
+    try {
+        const res = await apiGet('/users');
+        if (res.ok) {
+            prUsersList = res.result;
+            const select = document.getElementById('pr-filter-user');
+            if (!select) return;
+            select.innerHTML = '<option value="">\uD83D\uDC65 T\u1EA5t c\u1EA3</option>';
+            res.result.forEach(u => {
+                select.innerHTML += `<option value="${u.zalo_user_id}">${escapeHtml(u.display_name || u.zalo_user_id)}</option>`;
+            });
+        }
+    } catch (err) { }
+}
+
+function onPRUserChange() {
+    const userId = document.getElementById('pr-filter-user')?.value;
+    if (userId) {
+        loadUserExpenseHistory(userId);
+    } else {
+        document.getElementById('user-expense-history-card').style.display = 'none';
+    }
+    loadPaymentRequests();
+}
+
+async function loadUserExpenseHistory(userId) {
+    try {
+        const from_date = document.getElementById('pr-filter-from')?.value || '';
+        const to_date = document.getElementById('pr-filter-to')?.value || '';
+        const params = new URLSearchParams();
+        if (from_date) params.append('from_date', from_date);
+        if (to_date) params.append('to_date', to_date);
+        const res = await apiGet(`/expenses/user-payment/${userId}?${params}`);
+        if (res.ok) {
+            renderUserExpenseHistory(res.result);
+            const user = prUsersList.find(u => u.zalo_user_id === userId);
+            document.getElementById('pr-selected-user-name').textContent = user?.display_name || userId;
+            document.getElementById('user-expense-history-card').style.display = 'block';
+        }
+    } catch (err) { showToast('Lỗi tải lịch sử', 'error'); }
+}
+
+function renderUserExpenseHistory(expenses) {
+    const tbody = document.getElementById('user-expenses-body');
+    if (!expenses.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Không có chi tiêu</td></tr>';
+        return;
+    }
+    tbody.innerHTML = expenses.map(e => {
+        const ps = e.payment_status || 'unpaid';
+        const statusBadge = {
+            unpaid: '<span class="badge bg-warning text-dark">Chưa TT</span>',
+            requested: '<span class="badge bg-info">Đang yêu cầu</span>',
+            paid: '<span class="badge bg-success">Đã TT</span>',
+        }[ps] || '<span class="badge bg-warning text-dark">Chưa TT</span>';
+        const isUnpaid = ps === 'unpaid' || !ps;
+        return `<tr>
+            <td><input type="checkbox" class="expense-checkbox" value="${e.id}" data-amount="${e.amount}" ${isUnpaid ? '' : 'disabled'} onchange="updateSelectedCount()"></td>
+            <td>${escapeHtml(e.description)}</td>
+            <td class="fw-bold">${formatCurrency(e.amount)}</td>
+            <td>${formatShortDate(e.created_at)}</td>
+            <td>${statusBadge}</td>
+        </tr>`;
+    }).join('');
+    updateSelectedCount();
+}
+
+function toggleSelectAllExpenses() {
+    const checked = document.getElementById('select-all-expenses').checked;
+    document.querySelectorAll('.expense-checkbox:not(:disabled)').forEach(cb => cb.checked = checked);
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const checked = document.querySelectorAll('.expense-checkbox:checked');
+    let total = 0;
+    checked.forEach(cb => total += parseFloat(cb.dataset.amount) || 0);
+    document.getElementById('selected-expense-count').textContent = checked.length;
+    document.getElementById('selected-expense-total').textContent = formatCurrency(total);
+}
+
+async function createPaymentFromSelected() {
+    const checked = document.querySelectorAll('.expense-checkbox:checked');
+    if (!checked.length) return showToast('Chọn ít nhất 1 chi tiêu', 'error');
+    const ids = Array.from(checked).map(cb => cb.value);
+    const userId = document.getElementById('pr-filter-user')?.value;
+    const user = prUsersList.find(u => u.zalo_user_id === userId);
+    if (!confirm(`Tạo thanh toán ${checked.length} giao dịch & đánh dấu đã TT?`)) return;
+    try {
+        const res = await apiPost('/payment-requests', {
+            expense_ids: ids.join(','),
+            from_date: document.getElementById('pr-filter-from')?.value || '',
+            to_date: document.getElementById('pr-filter-to')?.value || '',
+            target_user_id: userId,
+            target_user_name: user?.display_name || '',
+            note: 'Admin tạo thủ công',
+        });
+        if (res.ok) {
+            showToast('Đã tạo & thanh toán!', 'success');
+            if (userId) loadUserExpenseHistory(userId);
+            loadPaymentRequests();
+        } else { showToast(res.error || 'Lỗi', 'error'); }
+    } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+function adminCreatePaymentForUser() {
+    const userId = document.getElementById('pr-filter-user')?.value;
+    if (!userId) return showToast('Chọn người dùng trước', 'error');
+    document.querySelectorAll('.expense-checkbox:not(:disabled)').forEach(cb => cb.checked = true);
+    updateSelectedCount();
+    createPaymentFromSelected();
+}
+
 function renderPaymentRequestsTable(requests) {
     const tbody = document.getElementById('payment-requests-body');
     if (!requests.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Chưa có đề nghị thanh toán nào</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Chưa có đề nghị nào</td></tr>';
         return;
     }
     tbody.innerHTML = requests.map(r => {
         const statusBadge = {
             pending: '<span class="badge bg-warning">Chờ duyệt</span>',
             approved: '<span class="badge bg-info">Đã duyệt</span>',
-            paid: '<span class="badge bg-success">Đã thanh toán</span>',
+            paid: '<span class="badge bg-success">Đã TT</span>',
             rejected: '<span class="badge bg-danger">Từ chối</span>',
         }[r.status] || r.status;
-
         let actions = '';
         if (currentUser?.is_admin && r.status === 'pending') {
             actions = `<button class="btn btn-sm btn-outline-success" onclick="approvePaymentRequest(${r.id})"><i class="fas fa-check"></i></button>
                        <button class="btn btn-sm btn-outline-danger" onclick="rejectPaymentRequest(${r.id})"><i class="fas fa-times"></i></button>`;
         } else if (currentUser?.is_admin && r.status === 'approved') {
-            actions = `<button class="btn btn-sm btn-success" onclick="markPaymentRequestPaid(${r.id})"><i class="fas fa-money-bill"></i> Đã TT</button>`;
+            actions = `<button class="btn btn-sm btn-success" onclick="markPaymentRequestPaid(${r.id})"><i class="fas fa-money-bill"></i> TT</button>`;
         }
-
         return `<tr>
             <td>${r.id}</td>
             <td>${escapeHtml(r.requested_by_name || 'N/A')}</td>
@@ -1189,15 +1337,11 @@ function renderPaymentRequestsTable(requests) {
     }).join('');
 }
 
-function openCreatePaymentRequest() {
-    generatePaymentRequest();
-}
-
 async function approvePaymentRequest(id) {
-    if (!confirm('Duyệt đề nghị thanh toán này?')) return;
+    if (!confirm('Duyệt đề nghị này?')) return;
     try {
         await apiPost(`/payment-requests/${id}/approve`);
-        showToast('Đã duyệt đề nghị thanh toán', 'success');
+        showToast('Đã duyệt', 'success');
         loadPaymentRequests();
     } catch (err) { showToast('Lỗi', 'error'); }
 }
@@ -1206,13 +1350,15 @@ async function markPaymentRequestPaid(id) {
     if (!confirm('Xác nhận đã thanh toán?')) return;
     try {
         await apiPost(`/payment-requests/${id}/paid`);
-        showToast('Đã đánh dấu thanh toán', 'success');
+        showToast('Đã đánh dấu TT', 'success');
         loadPaymentRequests();
+        const userId = document.getElementById('pr-filter-user')?.value;
+        if (userId) loadUserExpenseHistory(userId);
     } catch (err) { showToast('Lỗi', 'error'); }
 }
 
 async function rejectPaymentRequest(id) {
-    if (!confirm('Từ chối đề nghị thanh toán?')) return;
+    if (!confirm('Từ chối đề nghị?')) return;
     try {
         await apiPost(`/payment-requests/${id}/reject`);
         showToast('Đã từ chối', 'success');

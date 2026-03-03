@@ -555,7 +555,6 @@
                 </div>
             </div>
         </section>
-
         <!-- ============= PAYMENT REQUESTS PAGE ============= -->
         <section class="page" id="page-payment-requests">
             <div class="page-header">
@@ -563,13 +562,91 @@
                     <h1>Đề nghị thanh toán</h1>
                     <p class="page-subtitle">Quản lý yêu cầu thanh toán chi tiêu</p>
                 </div>
-                <div class="header-actions">
-                    <button class="btn btn-primary" onclick="openCreatePaymentRequest()">
-                        <i class="fas fa-plus"></i> Tạo đề nghị
+                <div class="header-actions admin-only">
+                    <button class="btn btn-success" onclick="adminCreatePaymentForUser()">
+                        <i class="fas fa-money-check-alt"></i> Tạo & thanh toán
                     </button>
                 </div>
             </div>
+
+            <!-- Filters -->
+            <div class="card filters-card">
+                <div class="filters-grid">
+                    <div class="filter-group" style="grid-column: 1 / -1;">
+                        <label>Khoảng thời gian</label>
+                        <div class="d-flex flex-wrap gap-2" id="pr-period-btns">
+                            <button class="btn btn-sm btn-primary" data-period="week" onclick="setPRPeriod('week')">
+                                <i class="fas fa-calendar-week"></i> Tuần này
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" data-period="month"
+                                onclick="setPRPeriod('month')">
+                                <i class="fas fa-calendar-alt"></i> Tháng này
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" data-period="all"
+                                onclick="setPRPeriod('all')">
+                                <i class="fas fa-infinity"></i> Tất cả
+                            </button>
+                        </div>
+                    </div>
+                    <div class="filter-group admin-only">
+                        <label>Người dùng</label>
+                        <select id="pr-filter-user" class="input" onchange="onPRUserChange()">
+                            <option value="">👥 Tất cả</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Từ ngày</label>
+                        <input type="date" id="pr-filter-from" class="input">
+                    </div>
+                    <div class="filter-group">
+                        <label>Đến ngày</label>
+                        <input type="date" id="pr-filter-to" class="input">
+                    </div>
+                    <div class="filter-group filter-actions">
+                        <button class="btn btn-primary" onclick="loadPaymentRequests()">
+                            <i class="fas fa-search"></i> Lọc
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Expense History (shown when user selected) -->
+            <div class="card" id="user-expense-history-card" style="display:none;">
+                <div class="card-header">
+                    <h3><i class="fas fa-user-clock"></i> Lịch sử chi tiêu: <span id="pr-selected-user-name"></span>
+                    </h3>
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="select-all-expenses"
+                                        onchange="toggleSelectAllExpenses()"></th>
+                                <th>Mô tả</th>
+                                <th>Số tiền</th>
+                                <th>Ngày</th>
+                                <th>Trạng thái TT</th>
+                            </tr>
+                        </thead>
+                        <tbody id="user-expenses-body"></tbody>
+                    </table>
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <div>
+                            <span class="text-muted">Đã chọn: <strong id="selected-expense-count">0</strong> | Tổng:
+                                <strong id="selected-expense-total">0 ₫</strong></span>
+                        </div>
+                        <button class="btn btn-success admin-only" onclick="createPaymentFromSelected()">
+                            <i class="fas fa-check-circle"></i> Tạo TT cho mục đã chọn
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Requests Table -->
             <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-file-invoice-dollar"></i> Danh sách đề nghị</h3>
+                </div>
                 <div class="card-body table-responsive">
                     <table class="table table-hover" id="payment-requests-table">
                         <thead>

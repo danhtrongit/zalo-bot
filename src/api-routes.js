@@ -408,7 +408,7 @@ router.get('/expenses/:id/history', (req, res) => {
 // ============= Payment Requests (Đề nghị thanh toán) =============
 router.post('/payment-requests', (req, res) => {
     try {
-        const { from_date, to_date, expense_ids, note } = req.body;
+        const { from_date, to_date, expense_ids, note, target_user_id } = req.body;
         if (!expense_ids) return res.status(400).json({ ok: false, error: 'Chưa chọn chi tiêu' });
 
         const idList = expense_ids.split(',').map(Number).filter(n => n > 0);
@@ -418,9 +418,13 @@ router.post('/payment-requests', (req, res) => {
             if (exp) total += exp.amount;
         }
 
+        // If admin creates, use target_user_id or own
+        const requestedBy = target_user_id || req.user.zalo_user_id;
+        const requestedByName = target_user_id ? (req.body.target_user_name || 'N/A') : req.user.display_name;
+
         const id = dao.createPaymentRequest({
-            requested_by: req.user.zalo_user_id,
-            requested_by_name: req.user.display_name,
+            requested_by: requestedBy,
+            requested_by_name: requestedByName,
             from_date, to_date,
             total_amount: total,
             expense_count: idList.length,
@@ -428,11 +432,17 @@ router.post('/payment-requests', (req, res) => {
             note,
         });
 
-        // Notify admin
-        if (ADMIN_ZALO_ID && !isAdmin(req)) {
-            zaloApi.sendMessage(ADMIN_ZALO_ID,
-                `💳 ĐỀ NGHỊ THANH TOÁN MỚI\n\n👤 ${req.user.display_name}\n💰 ${total.toLocaleString('vi-VN')} ₫\n📋 ${idList.length} giao dịch\n\nVào Dashboard để xem & duyệt.`
-            ).catch(e => console.error('[Notify] Error:', e.message));
+        // Admin creates = auto mark as paid
+        if (isAdmin(req)) {
+            dao.approvePaymentRequest(id, req.user.zalo_user_id);
+            dao.markPaymentRequestPaid(id);
+        } else {
+            // Notify admin
+            if (ADMIN_ZALO_ID) {
+                zaloApi.sendMessage(ADMIN_ZALO_ID,
+                    `💳 ĐỀ NGHỊ THANH TOÁN MỚI\n\n👤 ${req.user.display_name}\n💰 ${total.toLocaleString('vi-VN')} ₫\n📋 ${idList.length} giao dịch\n\nVào Dashboard để xem & duyệt.`
+                ).catch(e => console.error('[Notify] Error:', e.message));
+            }
         }
 
         res.json({ ok: true, result: { id } });
@@ -443,9 +453,29 @@ router.post('/payment-requests', (req, res) => {
 
 router.get('/payment-requests', (req, res) => {
     try {
-        const userId = isAdmin(req) ? null : req.user.zalo_user_id;
-        const requests = dao.getPaymentRequests(userId);
+        const { from_date, to_date, zalo_user_id } = req.query;
+        const userId = isAdmin(req) ? (zalo_user_id || null) : req.user.zalo_user_id;
+        const requests = dao.getPaymentRequests({ userId, from_date, to_date });
         res.json({ ok: true, result: requests });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// Get expenses for a specific user with payment_status
+router.get('/expenses/user-payment/:userId', (req, res) => {
+    try {
+        if (!isAdmin(req) && req.params.userId !== req.user.zalo_user_id) {
+            return res.status(403).json({ ok: false, error: 'Kh\u00F4ng c\u00F3 quy\u1EC1n' });
+        }
+        const { from_date, to_date } = req.query;
+        const result = dao.getExpenses({
+            limit: 500,
+            offset: 0,
+            from_date, to_date,
+            user_id: req.params.userId,
+        });
+        res.json({ ok: true, result: result.rows });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });
     }

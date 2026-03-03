@@ -761,14 +761,15 @@ const dao = {
     return result.lastInsertRowid;
   },
 
-  getPaymentRequests(userId) {
-    let sql = `SELECT * FROM payment_requests`;
-    const params = [];
-    if (userId) { sql += ' WHERE requested_by = ?'; params.push(userId); }
-    sql += ' ORDER BY created_at DESC';
-    return db.prepare(sql).all(...params);
+  getPaymentRequests({ userId, from_date, to_date } = {}) {
+    let where = [];
+    let params = [];
+    if (userId) { where.push('requested_by = ?'); params.push(userId); }
+    if (from_date) { where.push('created_at >= ?'); params.push(from_date); }
+    if (to_date) { where.push('created_at <= ?'); params.push(to_date + ' 23:59:59'); }
+    const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
+    return db.prepare(`SELECT * FROM payment_requests ${whereClause} ORDER BY created_at DESC`).all(...params);
   },
-
   getPaymentRequestById(id) {
     return db.prepare('SELECT * FROM payment_requests WHERE id = ?').get(id);
   },
