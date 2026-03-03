@@ -80,6 +80,7 @@ db.exec(`
     zalo_user_id TEXT NOT NULL UNIQUE,
     display_name TEXT DEFAULT '',
     role TEXT DEFAULT 'user',
+    department TEXT DEFAULT '',
     added_by TEXT DEFAULT 'admin',
     is_active INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -177,6 +178,9 @@ if (ADMIN_ZALO_ID) {
     VALUES (?, 'Admin', 'admin', 'system')
   `).run(ADMIN_ZALO_ID);
 }
+
+// Migration: add department column if missing
+try { db.prepare('ALTER TABLE allowed_users ADD COLUMN department TEXT DEFAULT ""').run(); } catch (e) { /* already exists */ }
 
 // =============  DAO Functions =============
 
@@ -450,20 +454,21 @@ const dao = {
     return db.prepare('SELECT * FROM allowed_users ORDER BY created_at DESC').all();
   },
 
-  addAllowedUser(zaloUserId, displayName = '', role = 'user', addedBy = 'admin') {
+  addAllowedUser(zaloUserId, displayName = '', role = 'user', addedBy = 'admin', department = '') {
     const result = db.prepare(`
-      INSERT OR IGNORE INTO allowed_users (zalo_user_id, display_name, role, added_by)
-      VALUES (?, ?, ?, ?)
-    `).run(zaloUserId, displayName, role, addedBy);
+      INSERT OR IGNORE INTO allowed_users (zalo_user_id, display_name, role, added_by, department)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(zaloUserId, displayName, role, addedBy, department);
     return result.lastInsertRowid;
   },
 
-  updateAllowedUser(id, { display_name, role, is_active }) {
+  updateAllowedUser(id, { display_name, role, is_active, department }) {
     const sets = [];
     const params = [];
     if (display_name !== undefined) { sets.push('display_name = ?'); params.push(display_name); }
     if (role !== undefined) { sets.push('role = ?'); params.push(role); }
     if (is_active !== undefined) { sets.push('is_active = ?'); params.push(is_active ? 1 : 0); }
+    if (department !== undefined) { sets.push('department = ?'); params.push(department); }
     if (sets.length === 0) return;
     params.push(id);
     db.prepare(`UPDATE allowed_users SET ${sets.join(', ')} WHERE id = ?`).run(...params);

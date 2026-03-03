@@ -616,6 +616,7 @@
                                 <th>ID</th>
                                 <th>Zalo User ID</th>
                                 <th>Tên hiển thị</th>
+                                <th>Phòng ban</th>
                                 <th>Vai trò</th>
                                 <th>Trạng thái</th>
                                 <th>Ngày thêm</th>
@@ -624,7 +625,7 @@
                         </thead>
                         <tbody id="users-tbody">
                             <tr>
-                                <td colspan="7" class="empty-state">Đang tải...</td>
+                                <td colspan="8" class="empty-state">Đang tải...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -735,20 +736,24 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-user-plus"></i> Thêm người dùng</h5>
+                    <h5 class="modal-title" id="user-modal-title"><i class="fas fa-user-plus"></i> Thêm người dùng</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <input type="hidden" id="user-edit-id">
                     <div class="mb-3">
                         <label class="form-label">Zalo User ID *</label>
                         <input type="text" id="user-zalo-id" class="form-control"
                             placeholder="VD: e8991cb826edcfb396fc">
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tên hiển thị</label>
+                        <input type="text" id="user-display-name" class="form-control" placeholder="VD: Nguyễn Văn A">
+                    </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Tên hiển thị</label>
-                            <input type="text" id="user-display-name" class="form-control"
-                                placeholder="VD: Nguyễn Văn A">
+                            <label class="form-label">Phòng ban</label>
+                            <input type="text" id="user-department" class="form-control" placeholder="VD: Kế toán">
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Vai trò</label>

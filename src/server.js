@@ -123,10 +123,10 @@ app.post('/api/users', apiAuthMiddleware, (req, res) => {
         if (req.user.role !== 'admin') {
             return res.status(403).json({ ok: false, error: 'Chỉ Admin mới có quyền thêm người dùng' });
         }
-        const { zalo_user_id, display_name, role } = req.body;
+        const { zalo_user_id, display_name, role, department } = req.body;
         if (!zalo_user_id) return res.status(400).json({ ok: false, error: 'Zalo User ID là bắt buộc' });
 
-        const id = dao.addAllowedUser(zalo_user_id, display_name || '', role || 'user', req.user.zalo_user_id);
+        const id = dao.addAllowedUser(zalo_user_id, display_name || '', role || 'user', req.user.zalo_user_id, department || '');
         res.json({ ok: true, result: { id } });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });

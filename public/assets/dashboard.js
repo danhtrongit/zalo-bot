@@ -1129,28 +1129,32 @@ async function loadUsers() {
 function renderUsersTable(users) {
     const tbody = document.getElementById('users-tbody');
     if (!users || users.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Chưa có người dùng nào</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Chưa có người dùng nào</td></tr>';
         return;
     }
 
     tbody.innerHTML = users.map(u => `
     <tr>
-      <td><strong>#${u.id}</strong></td>
-      <td><code style="background:rgba(0,88,42,0.08);padding:2px 8px;border-radius:4px;font-size:0.82rem;">${escapeHtml(u.zalo_user_id)}</code></td>
-      <td>${escapeHtml(u.display_name) || '<span style="color:var(--text-muted)">Chưa có tên</span>'}</td>
-      <td>
+      <td data-label="ID"><strong>#${u.id}</strong></td>
+      <td data-label="Zalo ID"><code style="background:rgba(0,88,42,0.08);padding:2px 8px;border-radius:4px;font-size:0.82rem;">${escapeHtml(u.zalo_user_id)}</code></td>
+      <td data-label="Tên">${escapeHtml(u.display_name) || '<span style="color:var(--text-muted)">Chưa có tên</span>'}</td>
+      <td data-label="Phòng ban">${escapeHtml(u.department || '') || '<span style="color:var(--text-muted)">-</span>'}</td>
+      <td data-label="Vai trò">
         <span class="category-badge" style="background:${u.role === 'admin' ? '#00582a20' : '#3b82f620'};color:${u.role === 'admin' ? '#00582a' : '#3b82f6'}">
           ${u.role === 'admin' ? '🛡️ Admin' : '👤 User'}
         </span>
       </td>
-      <td>
+      <td data-label="Trạng thái">
         <span style="color:${u.is_active ? '#22c55e' : '#ef4444'};font-weight:600;">
           ${u.is_active ? '✅ Hoạt động' : '⛔ Bị khóa'}
         </span>
       </td>
-      <td class="time-text">${formatDate(u.created_at)}</td>
-      <td>
+      <td data-label="Ngày thêm" class="time-text">${formatDate(u.created_at)}</td>
+      <td data-label="">
         <div style="display:flex;gap:4px;">
+          <button class="btn-icon" onclick='editUser(${JSON.stringify(u).replace(/'/g, "&#39;")})' title="Sửa">
+            <i class="fas fa-edit"></i>
+          </button>
           <button class="btn-icon" onclick="toggleUserActive(${u.id}, ${u.is_active ? 0 : 1})" title="${u.is_active ? 'Khóa' : 'Mở khóa'}">
             <i class="fas fa-${u.is_active ? 'lock' : 'unlock'}"></i>
           </button>
@@ -1168,30 +1172,58 @@ function openAddUser() {
         showToast('Chỉ Admin mới có quyền thêm người dùng', 'error');
         return;
     }
+    document.getElementById('user-modal-title').innerHTML = '<i class="fas fa-user-plus"></i> Thêm người dùng';
+    document.getElementById('user-edit-id').value = '';
     document.getElementById('user-zalo-id').value = '';
+    document.getElementById('user-zalo-id').disabled = false;
     document.getElementById('user-display-name').value = '';
+    document.getElementById('user-department').value = '';
     document.getElementById('user-role').value = 'user';
     openModal('user-modal');
 }
 
+function editUser(user) {
+    if (currentUser?.role !== 'admin') {
+        showToast('Chỉ Admin mới có quyền chỉnh sửa', 'error');
+        return;
+    }
+    document.getElementById('user-modal-title').innerHTML = '<i class="fas fa-user-edit"></i> Chỉnh sửa người dùng';
+    document.getElementById('user-edit-id').value = user.id;
+    document.getElementById('user-zalo-id').value = user.zalo_user_id;
+    document.getElementById('user-zalo-id').disabled = true;
+    document.getElementById('user-display-name').value = user.display_name || '';
+    document.getElementById('user-department').value = user.department || '';
+    document.getElementById('user-role').value = user.role || 'user';
+    openModal('user-modal');
+}
+
 async function saveUser() {
+    const editId = document.getElementById('user-edit-id').value;
     const zalo_user_id = document.getElementById('user-zalo-id').value.trim();
     const display_name = document.getElementById('user-display-name').value.trim();
+    const department = document.getElementById('user-department').value.trim();
     const role = document.getElementById('user-role').value;
 
-    if (!zalo_user_id) return showToast('Vui lòng nhập Zalo User ID', 'error');
+    if (!editId && !zalo_user_id) return showToast('Vui lòng nhập Zalo User ID', 'error');
 
     try {
-        const res = await apiPost('/users', { zalo_user_id, display_name, role });
+        let res;
+        if (editId) {
+            // Update existing user
+            res = await apiPut(`/users/${editId}`, { display_name, department, role });
+        } else {
+            // Create new user
+            res = await apiPost('/users', { zalo_user_id, display_name, department, role });
+        }
         if (res.ok) {
-            showToast('Đã thêm người dùng', 'success');
+            showToast(editId ? 'Đã cập nhật người dùng' : 'Đã thêm người dùng', 'success');
             closeModal('user-modal');
             loadUsers();
         } else {
-            showToast(res.error || 'Lỗi khi thêm', 'error');
+            showToast(res.error || 'Lỗi', 'error');
         }
     } catch (err) {
-        showToast('Lỗi khi thêm người dùng', 'error');
+        showToast('Lỗi khi lưu người dùng', 'error');
     }
 }
 
