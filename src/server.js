@@ -162,6 +162,10 @@ app.delete('/api/users/:id', apiAuthMiddleware, (req, res) => {
 const pendingImages = new Map();
 const MULTI_IMAGE_WAIT_MS = 4000; // Wait 4 seconds for additional images
 
+// Webhook dedup: prevent processing same message_id twice
+const processedMessageIds = new Set();
+const MAX_DEDUP_SIZE = 200;
+
 // ============= Webhook Endpoint (no auth, uses secret token) =============
 app.post('/webhooks', async (req, res) => {
     const secretToken = req.headers['x-bot-api-secret-token'];
@@ -197,6 +201,21 @@ async function handleUpdate(update) {
     const { event_name, message } = update;
 
     if (!message) return;
+
+    // Dedup: skip if message_id already processed
+    const msgId = message.message_id;
+    if (msgId) {
+        if (processedMessageIds.has(msgId)) {
+            console.log(`[Bot] Skipping duplicate message: ${msgId}`);
+            return;
+        }
+        processedMessageIds.add(msgId);
+        // Keep set size bounded
+        if (processedMessageIds.size > MAX_DEDUP_SIZE) {
+            const first = processedMessageIds.values().next().value;
+            processedMessageIds.delete(first);
+        }
+    }
 
     const chatId = message.chat?.id;
     const userId = message.from?.id;

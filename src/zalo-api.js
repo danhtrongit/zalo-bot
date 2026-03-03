@@ -15,16 +15,28 @@ const zaloApi = {
         }
     },
 
-    async sendMessage(chatId, text) {
-        try {
-            const res = await axios.post(`${ZALO_API_BASE}/sendMessage`, {
-                chat_id: chatId,
-                text: text,
-            });
-            return res.data;
-        } catch (err) {
-            console.error('[Zalo API] sendMessage error:', err.message);
-            return null;
+    async sendMessage(chatId, text, retries = 3) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                const res = await axios.post(`${ZALO_API_BASE}/sendMessage`, {
+                    chat_id: chatId,
+                    text: text,
+                }, { timeout: 15000 });
+                return res.data;
+            } catch (err) {
+                const status = err.response?.status;
+                const isRetryable = status === 502 || status === 503 || status === 504 ||
+                    err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET';
+
+                if (isRetryable && attempt < retries) {
+                    const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+                    console.warn(`[Zalo API] sendMessage retry ${attempt}/${retries} after ${delay}ms (${status || err.code})`);
+                    await new Promise(r => setTimeout(r, delay));
+                    continue;
+                }
+                console.error(`[Zalo API] sendMessage error (attempt ${attempt}/${retries}):`, err.message);
+                return null;
+            }
         }
     },
 
