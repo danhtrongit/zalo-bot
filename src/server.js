@@ -179,8 +179,12 @@ app.post('/webhooks', async (req, res) => {
         const body = req.body;
         console.log('[Webhook] Received:', JSON.stringify(body).substring(0, 200));
 
+        // Webhook sends data directly: {event_name, message, ...}
+        // Polling wraps it: {ok: true, result: {event_name, message, ...}}
         if (body.ok && body.result) {
             await handleUpdate(body.result);
+        } else if (body.event_name) {
+            await handleUpdate(body);
         }
 
         res.json({ message: 'Success' });
