@@ -181,7 +181,14 @@ const dao = {
   },
 
   // ---- Expenses ----
-  addExpense({ category_id, description, amount, currency = 'VND', note, zalo_user_id, zalo_user_name, created_by = 'bot' }) {
+  addExpense({ category_id, description, amount, currency = 'VND', note, zalo_user_id, zalo_user_name, created_by = 'bot', created_at }) {
+    if (created_at) {
+      const result = db.prepare(`
+        INSERT INTO expenses (category_id, description, amount, currency, note, zalo_user_id, zalo_user_name, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(category_id, description, amount, currency, note, zalo_user_id, zalo_user_name, created_by, created_at);
+      return result.lastInsertRowid;
+    }
     const result = db.prepare(`
       INSERT INTO expenses (category_id, description, amount, currency, note, zalo_user_id, zalo_user_name, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)

@@ -34,13 +34,25 @@ Bạn là trợ lý AI chuyên hỗ trợ ghi nhận và quản lý chi tiêu ch
 ## QUY TẮC TRÍCH XUẤT CHI TIÊU:
 Khi user nhập chi tiêu, trích xuất và trả về **ĐÚNG FORMAT JSON** như sau:
 \`\`\`json
-{"action":"add_expense","data":{"description":"mô tả ngắn","amount":số tiền (number),"category":"tên danh mục","note":"ghi chú thêm nếu có"}}
+{"action":"add_expense","data":{"description":"mô tả ngắn","amount":số tiền (number),"category":"tên danh mục","date":"YYYY-MM-DD","note":"ghi chú thêm nếu có"}}
 \`\`\`
 
-Ví dụ:
-- User: "mua máy quay 50 triệu" → {"action":"add_expense","data":{"description":"Mua máy quay phim","amount":50000000,"category":"Sản xuất phim","note":""}}
-- User: "ăn trưa team 2tr5" → {"action":"add_expense","data":{"description":"Ăn trưa team","amount":2500000,"category":"Ăn uống & Tiếp khách","note":""}}
-- User: "thuê studio quay phim 15tr" → {"action":"add_expense","data":{"description":"Thuê studio quay phim","amount":15000000,"category":"Sản xuất phim","note":""}}
+## QUY TẮC NGÀY THÁNG (RẤT QUAN TRỌNG):
+- Luôn trả về trường "date" trong JSON dưới dạng YYYY-MM-DD
+- Hệ thống sẽ cung cấp [NGÀY HIỆN TẠI] ở cuối prompt, dùng ngày đó làm gốc
+- "hôm nay" = ngày hiện tại
+- "hôm qua" = ngày hiện tại trừ 1
+- "hôm kia" = ngày hiện tại trừ 2
+- "3 ngày trước" = ngày hiện tại trừ 3
+- "tuần trước" = ngày hiện tại trừ 7
+- "tháng trước" = tháng trước của ngày hiện tại
+- "ngày 15" hoặc "15/2" = ngày 15 tháng 2 (năm hiện tại)
+- Nếu user không đề cập ngày → dùng ngày hiện tại
+
+Ví dụ (nếu hôm nay là 2026-03-03):
+- User: "hôm qua ăn cơm hết 200k" → {"action":"add_expense","data":{"description":"Ăn cơm","amount":200000,"category":"Ăn uống & Tiếp khách","date":"2026-03-02","note":""}}
+- User: "mua máy quay 50 triệu" → {"action":"add_expense","data":{"description":"Mua máy quay phim","amount":50000000,"category":"Sản xuất phim","date":"2026-03-03","note":""}}
+- User: "tuần trước thuê studio 15tr" → {"action":"add_expense","data":{"description":"Thuê studio","amount":15000000,"category":"Sản xuất phim","date":"2026-02-24","note":""}}
 
 ## QUY TẮC SỐ TIỀN:
 - "50 triệu" = 50000000
@@ -55,7 +67,8 @@ Ví dụ:
 - NẾU user hỏi thông tin chung → trả lời bình thường (không JSON)
 - Luôn xác nhận lại chi tiêu sau khi ghi nhận
 - Đơn vị tiền tệ mặc định là VND
-- Khi không chắc về danh mục, chọn "Khác"`;
+- Khi không chắc về danh mục, chọn "Khác"
+- LUÔN trả về trường "date" chính xác trong JSON`;
 
 async function callAI(messages) {
     try {
@@ -96,7 +109,14 @@ async function processMessage(userId, userName, userMessage) {
     // Get current stats for context
     const stats = dao.getDashboardStats();
 
+    // Get current date in Vietnam timezone (UTC+7)
+    const now = new Date();
+    const vnDate = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const today = vnDate.toISOString().split('T')[0];
+    const dayOfWeek = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'][vnDate.getUTCDay()];
+
     const contextMessage = `
+[NGÀY HIỆN TẠI: ${today} (${dayOfWeek})]
 [THỐNG KÊ HIỆN TẠI]
 - Chi tiêu hôm nay: ${formatCurrency(stats.today.total)} (${stats.today.count} giao dịch)
 - Chi tiêu tháng này: ${formatCurrency(stats.month.total)} (${stats.month.count} giao dịch)
@@ -125,7 +145,7 @@ async function processMessage(userId, userName, userMessage) {
             const actionData = JSON.parse(jsonMatch[0]);
 
             if (actionData.action === 'add_expense') {
-                const { description, amount, category, note } = actionData.data;
+                const { description, amount, category, note, date } = actionData.data;
 
                 // Find category
                 let cat = dao.getCategoryByName(category);
@@ -134,6 +154,12 @@ async function processMessage(userId, userName, userMessage) {
                     const allCats = dao.getAllCategories();
                     cat = allCats.find(c => c.name.toLowerCase().includes(category.toLowerCase())) ||
                         allCats.find(c => c.name === 'Khác');
+                }
+
+                // Parse date from AI or default to now
+                let expenseDate = null;
+                if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                    expenseDate = date + ' 12:00:00'; // Set to noon of that day
                 }
 
                 // Save expense
@@ -145,13 +171,19 @@ async function processMessage(userId, userName, userMessage) {
                     note: note || '',
                     zalo_user_id: userId,
                     zalo_user_name: userName,
-                    created_by: 'bot'
+                    created_by: 'bot',
+                    created_at: expenseDate
                 });
+
+                // Format display date
+                const displayDate = date || today;
+                const dateLabel = date === today ? 'Hôm nay' : displayDate;
 
                 reply = `✅ Đã ghi nhận chi tiêu!\n\n` +
                     `📝 ${description}\n` +
                     `💰 ${formatCurrency(amount)}\n` +
                     `📂 ${cat ? cat.icon + ' ' + cat.name : 'Chưa phân loại'}\n` +
+                    `📅 ${dateLabel}\n` +
                     (note ? `📌 ${note}\n` : '') +
                     `🆔 Mã: #${expenseId}\n\n` +
                     `Nhập thêm chi tiêu hoặc gõ "báo cáo" để xem tổng kết.`;
