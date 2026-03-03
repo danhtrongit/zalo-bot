@@ -5,24 +5,30 @@ const zaloApi = require('./zalo-api');
 
 const ADMIN_ZALO_ID = process.env.ADMIN_ZALO_ID;
 
-// Admin-only middleware
 function adminOnly(req, res, next) {
-    if (req.user?.role !== 'admin' && req.user?.zalo_user_id !== ADMIN_ZALO_ID) {
+    if (!isAdmin(req)) {
         return res.status(403).json({ ok: false, error: 'Admin only' });
     }
     next();
 }
 
+function isAdmin(req) {
+    return req.user?.role === 'admin' || req.user?.zalo_user_id === ADMIN_ZALO_ID;
+}
+
+function getUserId(req) {
+    return isAdmin(req) ? null : req.user?.zalo_user_id;
+}
+
 // ============= Current User =============
 router.get('/me', (req, res) => {
-    const isAdmin = req.user?.role === 'admin' || req.user?.zalo_user_id === ADMIN_ZALO_ID;
     res.json({
         ok: true,
         result: {
             zalo_user_id: req.user.zalo_user_id,
             display_name: req.user.display_name,
-            role: isAdmin ? 'admin' : 'user',
-            is_admin: isAdmin,
+            role: isAdmin(req) ? 'admin' : 'user',
+            is_admin: isAdmin(req),
         }
     });
 });
@@ -30,7 +36,8 @@ router.get('/me', (req, res) => {
 // ============= Dashboard Stats =============
 router.get('/stats', (req, res) => {
     try {
-        const stats = dao.getDashboardStats();
+        const userId = getUserId(req);
+        const stats = dao.getDashboardStats(userId);
         res.json({ ok: true, result: stats });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });
@@ -80,11 +87,13 @@ router.delete('/categories/:id', (req, res) => {
 router.get('/expenses', (req, res) => {
     try {
         const { limit, offset, category_id, from_date, to_date, search } = req.query;
+        const userId = getUserId(req);
         const result = dao.getExpenses({
             limit: parseInt(limit) || 50,
             offset: parseInt(offset) || 0,
             category_id: category_id ? parseInt(category_id) : undefined,
-            from_date, to_date, search
+            from_date, to_date, search,
+            user_id: userId,
         });
         res.json({ ok: true, result });
     } catch (err) {
@@ -123,7 +132,8 @@ router.delete('/expenses/:id', (req, res) => {
 router.get('/reports/summary', (req, res) => {
     try {
         const { from_date, to_date, zalo_user_id } = req.query;
-        const summary = dao.getExpenseSummary({ from_date, to_date, zalo_user_id });
+        const effectiveUserId = getUserId(req) || zalo_user_id;
+        const summary = dao.getExpenseSummary({ from_date, to_date, zalo_user_id: effectiveUserId });
         res.json({ ok: true, result: summary });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });
@@ -134,7 +144,8 @@ router.get('/reports/monthly-trend', (req, res) => {
     try {
         const months = parseInt(req.query.months) || 12;
         const { zalo_user_id } = req.query;
-        const trend = dao.getMonthlyTrend(months, zalo_user_id);
+        const effectiveUserId = getUserId(req) || zalo_user_id;
+        const trend = dao.getMonthlyTrend(months, effectiveUserId);
         res.json({ ok: true, result: trend });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });
@@ -145,7 +156,8 @@ router.get('/reports/daily-trend', (req, res) => {
     try {
         const days = parseInt(req.query.days) || 30;
         const { zalo_user_id } = req.query;
-        const trend = dao.getDailyTrend(days, zalo_user_id);
+        const effectiveUserId = getUserId(req) || zalo_user_id;
+        const trend = dao.getDailyTrend(days, effectiveUserId);
         res.json({ ok: true, result: trend });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });
@@ -155,7 +167,8 @@ router.get('/reports/daily-trend', (req, res) => {
 router.get('/reports/top-expenses', (req, res) => {
     try {
         const { limit, from_date, to_date, zalo_user_id } = req.query;
-        const top = dao.getTopExpenses(parseInt(limit) || 10, from_date, to_date, zalo_user_id);
+        const effectiveUserId = getUserId(req) || zalo_user_id;
+        const top = dao.getTopExpenses(parseInt(limit) || 10, from_date, to_date, effectiveUserId);
         res.json({ ok: true, result: top });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });
@@ -246,9 +259,13 @@ router.post('/pending-actions', (req, res) => {
         const expense = dao.getExpenseById(expense_id);
         if (!expense) return res.status(404).json({ ok: false, error: 'Expense not found' });
 
+        // Non-admin can only modify their own expenses
+        if (!isAdmin(req) && expense.zalo_user_id !== req.user.zalo_user_id) {
+            return res.status(403).json({ ok: false, error: 'Bạn chỉ có thể sửa/xóa chi tiêu của chính mình' });
+        }
+
         // Admin can edit/delete directly
-        const isAdmin = req.user?.role === 'admin' || req.user?.zalo_user_id === ADMIN_ZALO_ID;
-        if (isAdmin) {
+        if (isAdmin(req)) {
             if (action_type === 'delete') {
                 dao.deleteExpense(expense_id);
                 return res.json({ ok: true, direct: true, message: 'Deleted' });

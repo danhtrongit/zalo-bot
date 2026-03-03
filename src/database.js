@@ -229,10 +229,11 @@ const dao = {
     db.prepare('UPDATE expenses SET image_url = ? WHERE id = ?').run(imageUrl, expenseId);
   },
 
-  getExpenses({ limit = 50, offset = 0, category_id, from_date, to_date, search } = {}) {
+  getExpenses({ limit = 50, offset = 0, category_id, from_date, to_date, search, user_id } = {}) {
     let where = [];
     let params = [];
 
+    if (user_id) { where.push('e.zalo_user_id = ?'); params.push(user_id); }
     if (category_id) { where.push('e.category_id = ?'); params.push(category_id); }
     if (from_date) { where.push("e.created_at >= ?"); params.push(from_date); }
     if (to_date) { where.push("e.created_at <= ?"); params.push(to_date + ' 23:59:59'); }
@@ -391,32 +392,36 @@ const dao = {
     `).run(key, value);
   },
 
-  // ---- Dashboard Stats ----
-  getDashboardStats() {
+  getDashboardStats(userId) {
     const today = new Date().toISOString().split('T')[0];
     const month = today.substring(0, 7);
+    const userFilter = userId ? ' AND zalo_user_id = ?' : '';
+    const userParams = userId ? [userId] : [];
 
     const todayTotal = db.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
-      FROM expenses WHERE strftime('%Y-%m-%d', created_at) = ?
-    `).get(today);
+      FROM expenses WHERE strftime('%Y-%m-%d', created_at) = ?${userFilter}
+    `).get(today, ...userParams);
 
     const monthTotal = db.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
-      FROM expenses WHERE strftime('%Y-%m', created_at) = ?
-    `).get(month);
+      FROM expenses WHERE strftime('%Y-%m', created_at) = ?${userFilter}
+    `).get(month, ...userParams);
 
+    const allWhere = userId ? ' WHERE zalo_user_id = ?' : '';
     const allTimeTotal = db.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
-      FROM expenses
-    `).get();
+      FROM expenses${allWhere}
+    `).get(...userParams);
 
+    const recentWhere = userId ? 'WHERE e.zalo_user_id = ?' : '';
     const recentExpenses = db.prepare(`
       SELECT e.*, c.name as category_name, c.icon as category_icon, c.color as category_color
       FROM expenses e
       LEFT JOIN categories c ON e.category_id = c.id
+      ${recentWhere}
       ORDER BY e.created_at DESC LIMIT 10
-    `).all();
+    `).all(...userParams);
 
     return {
       today: todayTotal,
