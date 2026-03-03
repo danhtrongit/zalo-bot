@@ -688,97 +688,12 @@ body {
     padding-bottom: 1px;
 }
 
-/* ============= Modals ============= */
-.modal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: var(--bg-modal);
-    z-index: 1000;
-    align-items: center;
-    justify-content: center;
-    backdrop-filter: blur(4px);
-    animation: fadeIn 0.2s ease;
-}
-
-.modal-overlay.active {
-    display: flex;
-}
-
-.modal {
-    background: var(--bg-card);
-    border-radius: var(--radius-lg);
-    width: 90%;
-    max-width: 520px;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-    animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border);
-}
-
-.modal-header h3 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.modal-header h3 i {
+/* ============= Modal (Bootstrap overrides) ============= */
+.modal-title i {
     color: var(--primary);
 }
 
-.modal-close {
-    width: 32px;
-    height: 32px;
-    border: none;
-    background: var(--bg-body);
-    border-radius: 50%;
-    font-size: 1.2rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    transition: var(--transition);
-}
 
-.modal-close:hover {
-    background: rgba(239, 68, 68, 0.1);
-    color: var(--danger);
-}
-
-.modal-body {
-    padding: 24px;
-}
-
-.modal-footer {
-    padding: 16px 24px;
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    border-top: 1px solid var(--border);
-}
 
 /* ============= Categories Grid ============= */
 .categories-grid {
@@ -1200,20 +1115,6 @@ body {
         gap: 6px;
     }
 
-    .modal-content {
-        width: 95% !important;
-        max-height: 90vh;
-        margin: 5vh auto;
-        border-radius: 12px;
-    }
-
-    .modal-body {
-        padding: 14px;
-    }
-
-    .modal-header {
-        padding: 12px 14px;
-    }
 
     .info-row {
         flex-direction: column;

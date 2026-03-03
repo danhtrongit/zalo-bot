@@ -1076,26 +1076,18 @@ async function stopPollingMode() {
 
 // ============= Modal Helpers =============
 function openModal(id) {
-    document.getElementById(id).classList.add('active');
+    const modal = new bootstrap.Modal(document.getElementById(id));
+    modal.show();
 }
 
 function closeModal(id) {
-    document.getElementById(id).classList.remove('active');
+    const modalEl = document.getElementById(id);
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
 }
 
-// Close modal on overlay click
-document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('modal-overlay') && e.target.classList.contains('active')) {
-        e.target.classList.remove('active');
-    }
-});
 
-// Close modal on Escape key
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
-    }
-});
+
 
 // ============= Toast =============
 function showToast(message, type = 'info') {

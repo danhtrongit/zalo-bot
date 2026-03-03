@@ -650,108 +650,121 @@
     </main>
 
     <!-- ============= MODALS ============= -->
-    <!-- Add/Edit Expense Modal -->
-    <div class="modal-overlay" id="expense-modal">
-        <div class="modal">
-            <div class="modal-header">
-                <h3 id="expense-modal-title"><i class="fas fa-plus-circle"></i> Thêm chi tiêu mới</h3>
-                <button class="modal-close" onclick="closeModal('expense-modal')">&times;</button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="expense-edit-id">
-                <div class="form-group">
-                    <label>Mô tả *</label>
-                    <input type="text" id="expense-desc" class="input" placeholder="VD: Thuê studio quay phim">
+    <!-- Expense Modal (Bootstrap 5) -->
+    <div class="modal fade" id="expense-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="expense-modal-title"><i class="fas fa-plus-circle"></i> Thêm chi tiêu
+                        mới</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Số tiền (VND) *</label>
-                        <input type="number" id="expense-amount" class="input" placeholder="VD: 5000000" min="0">
+                <div class="modal-body">
+                    <input type="hidden" id="expense-edit-id">
+                    <div class="mb-3">
+                        <label class="form-label">Mô tả *</label>
+                        <input type="text" id="expense-desc" class="form-control"
+                            placeholder="VD: Thuê studio quay phim">
                     </div>
-                    <div class="form-group">
-                        <label>Danh mục *</label>
-                        <select id="expense-category" class="input">
-                            <option value="">Chọn danh mục</option>
-                        </select>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Số tiền (VND) *</label>
+                            <input type="number" id="expense-amount" class="form-control" placeholder="VD: 5000000"
+                                min="0">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Danh mục *</label>
+                            <select id="expense-category" class="form-select">
+                                <option value="">Chọn danh mục</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ghi chú</label>
+                        <textarea id="expense-note" class="form-control" rows="3"
+                            placeholder="Ghi chú thêm..."></textarea>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label>Ghi chú</label>
-                    <textarea id="expense-note" class="input" rows="3" placeholder="Ghi chú thêm..."></textarea>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" class="btn btn-success" onclick="saveExpense()">
+                        <i class="fas fa-save"></i> Lưu
+                    </button>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-outline" onclick="closeModal('expense-modal')">Hủy</button>
-                <button class="btn btn-primary" onclick="saveExpense()">
-                    <i class="fas fa-save"></i> Lưu
-                </button>
             </div>
         </div>
     </div>
 
-    <!-- Add Category Modal -->
-    <div class="modal-overlay" id="category-modal">
-        <div class="modal">
-            <div class="modal-header">
-                <h3><i class="fas fa-tag"></i> Thêm danh mục</h3>
-                <button class="modal-close" onclick="closeModal('category-modal')">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Tên danh mục *</label>
-                    <input type="text" id="cat-name" class="input" placeholder="VD: Quỹ dự phòng">
+    <!-- Category Modal (Bootstrap 5) -->
+    <div class="modal fade" id="category-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-tag"></i> Thêm danh mục</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Icon (emoji)</label>
-                        <input type="text" id="cat-icon" class="input" placeholder="📦" maxlength="4" value="📦">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Tên danh mục *</label>
+                        <input type="text" id="cat-name" class="form-control" placeholder="VD: Quỹ dự phòng">
                     </div>
-                    <div class="form-group">
-                        <label>Màu sắc</label>
-                        <input type="color" id="cat-color" class="input input-color" value="#00582a">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Icon (emoji)</label>
+                            <input type="text" id="cat-icon" class="form-control" placeholder="📦" maxlength="4"
+                                value="📦">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Màu sắc</label>
+                            <input type="color" id="cat-color" class="form-control form-control-color" value="#00582a">
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-outline" onclick="closeModal('category-modal')">Hủy</button>
-                <button class="btn btn-primary" onclick="saveCategory()">
-                    <i class="fas fa-save"></i> Lưu
-                </button>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" class="btn btn-success" onclick="saveCategory()">
+                        <i class="fas fa-save"></i> Lưu
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Add User Modal -->
-    <div class="modal-overlay" id="user-modal">
-        <div class="modal">
-            <div class="modal-header">
-                <h3><i class="fas fa-user-plus"></i> Thêm người dùng</h3>
-                <button class="modal-close" onclick="closeModal('user-modal')">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Zalo User ID *</label>
-                    <input type="text" id="user-zalo-id" class="input" placeholder="VD: e8991cb826edcfb396fc">
+    <!-- User Modal (Bootstrap 5) -->
+    <div class="modal fade" id="user-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-user-plus"></i> Thêm người dùng</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Tên hiển thị</label>
-                        <input type="text" id="user-display-name" class="input" placeholder="VD: Nguyễn Văn A">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Zalo User ID *</label>
+                        <input type="text" id="user-zalo-id" class="form-control"
+                            placeholder="VD: e8991cb826edcfb396fc">
                     </div>
-                    <div class="form-group">
-                        <label>Vai trò</label>
-                        <select id="user-role" class="input">
-                            <option value="user">User</option>
-                            <option value="admin">Admin</option>
-                        </select>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tên hiển thị</label>
+                            <input type="text" id="user-display-name" class="form-control"
+                                placeholder="VD: Nguyễn Văn A">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Vai trò</label>
+                            <select id="user-role" class="form-select">
+                                <option value="user">User</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-outline" onclick="closeModal('user-modal')">Hủy</button>
-                <button class="btn btn-primary" onclick="saveUser()">
-                    <i class="fas fa-save"></i> Lưu
-                </button>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" class="btn btn-success" onclick="saveUser()">
+                        <i class="fas fa-save"></i> Lưu
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -759,6 +772,7 @@
     <!-- Toast notification -->
     <div class="toast-container" id="toast-container"></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/assets/dashboard.js"></script>
 </body>
 
