@@ -61,8 +61,8 @@ function navigateTo(page) {
             break;
         case 'expenses':
             expensesPage = 1;
-            loadExpenses();
-            // Admin: show pending actions; User: hide admin-only
+            loadExpenseUsersFilter();
+            setExpensePeriod(currentExpensePeriod);
             if (currentUser?.is_admin) {
                 loadPendingActions();
                 document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
@@ -72,10 +72,6 @@ function navigateTo(page) {
             break;
         case 'categories':
             loadCategories();
-            break;
-        case 'reports':
-            loadReportUsersFilter();
-            setReportPeriod(currentReportPeriod);
             break;
         case 'settings':
             loadBotInfo();
@@ -396,12 +392,15 @@ function renderCategoryChart(data) {
 }
 
 // ============= Expenses Page =============
+let currentExpensePeriod = 'month';
+
 async function loadExpenses() {
     try {
         const search = document.getElementById('filter-search')?.value || '';
         const category_id = document.getElementById('filter-category')?.value || '';
         const from_date = document.getElementById('filter-from')?.value || '';
         const to_date = document.getElementById('filter-to')?.value || '';
+        const filterUser = document.getElementById('filter-user')?.value || '';
         const offset = (expensesPage - 1) * EXPENSES_PER_PAGE;
 
         const params = new URLSearchParams({
@@ -411,6 +410,7 @@ async function loadExpenses() {
             ...(category_id && { category_id }),
             ...(from_date && { from_date }),
             ...(to_date && { to_date }),
+            ...(filterUser && { zalo_user_id: filterUser }),
         });
 
         const res = await apiGet(`/expenses?${params}`);
@@ -422,6 +422,50 @@ async function loadExpenses() {
     } catch (err) {
         console.error('Load expenses error:', err);
     }
+}
+
+function setExpensePeriod(period) {
+    currentExpensePeriod = period;
+    const now = new Date();
+    let fromDate = '';
+    let toDate = now.toISOString().split('T')[0];
+
+    if (period === 'week') {
+        const d = new Date(now);
+        d.setDate(d.getDate() - d.getDay() + 1); // Monday
+        fromDate = d.toISOString().split('T')[0];
+    } else if (period === 'month') {
+        fromDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    } else {
+        fromDate = '';
+        toDate = '';
+    }
+
+    document.getElementById('filter-from').value = fromDate;
+    document.getElementById('filter-to').value = toDate;
+
+    // Update button styles
+    document.querySelectorAll('#expense-period-btns button').forEach(b => {
+        b.className = b.dataset.period === period ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline-secondary';
+    });
+
+    expensesPage = 1;
+    loadExpenses();
+}
+
+async function loadExpenseUsersFilter() {
+    if (!currentUser?.is_admin) return;
+    try {
+        const res = await apiGet('/users');
+        if (res.ok) {
+            const select = document.getElementById('filter-user');
+            if (!select) return;
+            select.innerHTML = '<option value="">\uD83D\uDC65 T\u1EA5t c\u1EA3</option>';
+            res.result.forEach(u => {
+                select.innerHTML += `<option value="${u.zalo_user_id}">${escapeHtml(u.display_name || u.zalo_user_id)}</option>`;
+            });
+        }
+    } catch (err) { /* skip */ }
 }
 
 function renderExpensesTable(expenses) {
@@ -494,10 +538,10 @@ function goToExpensePage(page) {
 function resetFilters() {
     document.getElementById('filter-search').value = '';
     document.getElementById('filter-category').value = '';
-    document.getElementById('filter-from').value = '';
-    document.getElementById('filter-to').value = '';
+    const filterUser = document.getElementById('filter-user');
+    if (filterUser) filterUser.value = '';
     expensesPage = 1;
-    loadExpenses();
+    setExpensePeriod('month');
 }
 
 // ============= Add/Edit Expense =============
@@ -777,238 +821,8 @@ async function loadCategoriesFilter() {
     }
 }
 
-// ============= Reports Page =============
-let currentReportPeriod = 'week';
+// (Reports page removed)
 
-function setReportPeriod(period) {
-    currentReportPeriod = period;
-    const now = new Date();
-    let from_date = '';
-    let to_date = now.toISOString().split('T')[0];
-
-    // Update active button
-    document.querySelectorAll('.period-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.period === period);
-    });
-
-    switch (period) {
-        case 'week': {
-            const weekStart = new Date(now);
-            weekStart.setDate(now.getDate() - now.getDay() + 1); // Monday
-            from_date = weekStart.toISOString().split('T')[0];
-            break;
-        }
-        case 'month': {
-            from_date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-            break;
-        }
-        case 'year': {
-            from_date = `${now.getFullYear()}-01-01`;
-            break;
-        }
-        case 'all': {
-            from_date = '';
-            to_date = '';
-            break;
-        }
-        case 'custom': {
-            // Use values from date inputs
-            from_date = document.getElementById('report-from')?.value || '';
-            to_date = document.getElementById('report-to')?.value || '';
-            break;
-        }
-    }
-
-    // Set date inputs to reflect the period
-    if (period !== 'custom') {
-        const fromEl = document.getElementById('report-from');
-        const toEl = document.getElementById('report-to');
-        if (fromEl) fromEl.value = from_date;
-        if (toEl) toEl.value = to_date;
-    }
-
-    loadReports();
-}
-
-async function loadReportUsersFilter() {
-    try {
-        const res = await apiGet('/users');
-        if (res.ok) {
-            const select = document.getElementById('report-user');
-            if (!select) return;
-            const currentVal = select.value;
-            select.innerHTML = '<option value="">👥 Tất cả</option>' +
-                res.result
-                    .filter(u => u.is_active)
-                    .map(u => `<option value="${u.zalo_user_id}">${u.display_name || u.zalo_user_id}</option>`)
-                    .join('');
-            select.value = currentVal;
-        }
-    } catch (err) {
-        console.error('Load report users error:', err);
-    }
-}
-
-async function loadReports() {
-    try {
-        const from_date = document.getElementById('report-from')?.value || '';
-        const to_date = document.getElementById('report-to')?.value || '';
-        const zalo_user_id = document.getElementById('report-user')?.value || '';
-
-        const params = new URLSearchParams({
-            ...(from_date && { from_date }),
-            ...(to_date && { to_date }),
-            ...(zalo_user_id && { zalo_user_id }),
-        });
-
-        const [monthlyRes, topRes, summaryRes] = await Promise.all([
-            apiGet(`/reports/monthly-trend?months=12${zalo_user_id ? '&zalo_user_id=' + zalo_user_id : ''}`),
-            apiGet(`/reports/top-expenses?${params}`),
-            apiGet(`/reports/summary?${params}`),
-        ]);
-
-        // Monthly chart
-        if (monthlyRes.ok) {
-            renderMonthlyChart(monthlyRes.result);
-        }
-
-        // Top expenses
-        if (topRes.ok) {
-            renderTopExpenses(topRes.result);
-        }
-
-        // Category summary bars + summary cards
-        if (summaryRes.ok) {
-            renderCategorySummaryBars(summaryRes.result);
-
-            // Update summary cards
-            const total = summaryRes.result.total_amount || 0;
-            const count = summaryRes.result.total_count || 0;
-            const avg = count > 0 ? total / count : 0;
-            const catCount = summaryRes.result.by_category?.length || 0;
-
-            document.getElementById('report-total').textContent = formatCurrency(total);
-            document.getElementById('report-count').textContent = count;
-            document.getElementById('report-avg').textContent = formatCurrency(avg);
-            document.getElementById('report-cat-count').textContent = catCount;
-        }
-
-    } catch (err) {
-        console.error('Load reports error:', err);
-    }
-}
-
-function renderMonthlyChart(data) {
-    const ctx = document.getElementById('chart-monthly');
-    if (!ctx) return;
-
-    if (chartMonthly) chartMonthly.destroy();
-
-    if (!data || data.length === 0) {
-        chartMonthly = new Chart(ctx, {
-            type: 'bar',
-            data: { labels: ['Chưa có dữ liệu'], datasets: [{ data: [0] }] },
-            options: { responsive: true, maintainAspectRatio: false }
-        });
-        return;
-    }
-
-    chartMonthly = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: data.map(d => d.month),
-            datasets: [{
-                label: 'Chi tiêu (VND)',
-                data: data.map(d => d.total),
-                backgroundColor: 'rgba(0, 88, 42, 0.7)',
-                borderColor: '#00582a',
-                borderWidth: 1,
-                borderRadius: 6,
-                borderSkipped: false,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: (ctx) => formatCurrency(ctx.raw),
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: (v) => {
-                            if (v >= 1e9) return (v / 1e9).toFixed(1) + 'B';
-                            if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
-                            if (v >= 1e3) return (v / 1e3).toFixed(0) + 'K';
-                            return v;
-                        },
-                        font: { size: 11 },
-                        color: '#8a9590',
-                    },
-                    grid: { color: 'rgba(0,0,0,0.04)' }
-                },
-                x: {
-                    ticks: { font: { size: 11 }, color: '#8a9590' },
-                    grid: { display: false }
-                }
-            }
-        }
-    });
-}
-
-function renderTopExpenses(expenses) {
-    const tbody = document.getElementById('top-expenses-tbody');
-    if (!expenses || expenses.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Không có dữ liệu</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = expenses.map((e, i) => `
-    <tr>
-      <td><strong>${i + 1}</strong></td>
-      <td>${escapeHtml(e.description)}</td>
-      <td>
-        <span class="category-badge" style="background:${e.category_color || '#9E9E9E'}20;color:${e.category_color || '#9E9E9E'}">
-          ${e.category_icon || '📦'} ${e.category_name || 'Chưa phân loại'}
-        </span>
-      </td>
-      <td class="amount">${formatCurrency(e.amount)}</td>
-      <td class="time-text">${formatDate(e.created_at)}</td>
-    </tr>
-  `).join('');
-}
-
-function renderCategorySummaryBars(summary) {
-    const container = document.getElementById('category-summary-bars');
-    if (!summary || !summary.by_category || summary.by_category.length === 0) {
-        container.innerHTML = '<p class="empty-state" style="padding:20px;">Chưa có dữ liệu chi tiêu</p>';
-        return;
-    }
-
-    const maxTotal = Math.max(...summary.by_category.map(c => c.total));
-
-    container.innerHTML = summary.by_category.map(cat => {
-        const pct = maxTotal > 0 ? (cat.total / maxTotal * 100).toFixed(1) : 0;
-        const totalPct = summary.total_amount > 0 ? ((cat.total / summary.total_amount) * 100).toFixed(1) : 0;
-        return `
-      <div class="summary-bar-item">
-        <div class="summary-bar-header">
-          <span class="summary-bar-label">${cat.icon} ${cat.name} <small style="color:var(--text-muted)">(${totalPct}%)</small></span>
-          <span class="summary-bar-value">${formatCurrency(cat.total)}</span>
-        </div>
-        <div class="summary-bar-track">
-          <div class="summary-bar-fill" style="width:${pct}%;background:${cat.color || '#00582a'}"></div>
-        </div>
-      </div>
-    `;
-    }).join('');
-}
 
 // ============= Settings Page =============
 async function loadBotInfo() {

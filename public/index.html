@@ -34,10 +34,7 @@
                 <i class="fas fa-tags"></i>
                 <span>Danh mục</span>
             </a>
-            <a href="#" class="nav-item" data-page="reports" id="nav-reports">
-                <i class="fas fa-chart-bar"></i>
-                <span>Báo cáo</span>
-            </a>
+
             <a href="#" class="nav-item" data-page="settings" id="nav-settings">
                 <i class="fas fa-cog"></i>
                 <span>Cài đặt Bot</span>
@@ -236,6 +233,24 @@
             <!-- Filters -->
             <div class="card filters-card">
                 <div class="filters-grid">
+                    <!-- Quick Period Buttons -->
+                    <div class="filter-group" style="grid-column: 1 / -1;">
+                        <label>Khoảng thời gian</label>
+                        <div class="d-flex flex-wrap gap-2" id="expense-period-btns">
+                            <button class="btn btn-sm btn-outline-secondary" data-period="week"
+                                onclick="setExpensePeriod('week')">
+                                <i class="fas fa-calendar-week"></i> Tuần này
+                            </button>
+                            <button class="btn btn-sm btn-primary" data-period="month"
+                                onclick="setExpensePeriod('month')">
+                                <i class="fas fa-calendar-alt"></i> Tháng này
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" data-period="all"
+                                onclick="setExpensePeriod('all')">
+                                <i class="fas fa-infinity"></i> Tất cả
+                            </button>
+                        </div>
+                    </div>
                     <div class="filter-group">
                         <label>Tìm kiếm</label>
                         <input type="text" id="filter-search" placeholder="Tìm theo mô tả..." class="input">
@@ -244,6 +259,12 @@
                         <label>Danh mục</label>
                         <select id="filter-category" class="input">
                             <option value="">Tất cả</option>
+                        </select>
+                    </div>
+                    <div class="filter-group admin-only">
+                        <label>Người dùng</label>
+                        <select id="filter-user" class="input">
+                            <option value="">👥 Tất cả</option>
                         </select>
                     </div>
                     <div class="filter-group">
@@ -312,135 +333,6 @@
             </div>
         </section>
 
-        <!-- ============= REPORTS PAGE ============= -->
-        <section class="page" id="page-reports">
-            <div class="page-header">
-                <div>
-                    <h1>Báo cáo & Phân tích</h1>
-                    <p class="page-subtitle">Phân tích chi tiêu chi tiết</p>
-                </div>
-                <div class="header-actions">
-                    <button class="btn btn-primary" onclick="generatePaymentRequest()">
-                        <i class="fas fa-file-invoice"></i> Tạo giấy đề nghị TT
-                    </button>
-                </div>
-            </div>
-
-            <!-- Quick Filter Bar -->
-            <div class="card filters-card" style="margin-bottom:20px;">
-                <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
-                    <!-- Period Buttons -->
-                    <div class="report-period-btns" id="report-period-btns">
-                        <button class="period-btn active" data-period="week" onclick="setReportPeriod('week')">
-                            <i class="fas fa-calendar-week"></i> Tuần này
-                        </button>
-                        <button class="period-btn" data-period="month" onclick="setReportPeriod('month')">
-                            <i class="fas fa-calendar-alt"></i> Tháng này
-                        </button>
-                        <button class="period-btn" data-period="year" onclick="setReportPeriod('year')">
-                            <i class="fas fa-calendar"></i> Năm nay
-                        </button>
-                        <button class="period-btn" data-period="all" onclick="setReportPeriod('all')">
-                            <i class="fas fa-infinity"></i> Tất cả
-                        </button>
-                    </div>
-
-                    <div style="width:1px;height:28px;background:var(--border-color);"></div>
-
-                    <!-- User Selector -->
-                    <div class="filter-group" style="min-width:180px;">
-                        <label style="font-size:0.75rem;color:var(--text-muted);margin-bottom:2px;">Người dùng</label>
-                        <select id="report-user" class="input" onchange="loadReports()" style="font-size:0.85rem;">
-                            <option value="">👥 Tất cả</option>
-                        </select>
-                    </div>
-
-                    <div style="width:1px;height:28px;background:var(--border-color);"></div>
-
-                    <!-- Custom Date Range -->
-                    <div class="filter-group" style="display:flex;gap:6px;align-items:flex-end;">
-                        <div>
-                            <label style="font-size:0.75rem;color:var(--text-muted);margin-bottom:2px;">Từ ngày</label>
-                            <input type="date" id="report-from" class="input" style="font-size:0.85rem;">
-                        </div>
-                        <div>
-                            <label style="font-size:0.75rem;color:var(--text-muted);margin-bottom:2px;">Đến</label>
-                            <input type="date" id="report-to" class="input" style="font-size:0.85rem;">
-                        </div>
-                        <button class="btn btn-primary btn-sm" onclick="setReportPeriod('custom')" style="height:36px;">
-                            <i class="fas fa-search"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Report Summary Cards -->
-                <div
-                    style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);">
-                    <div style="text-align:center;">
-                        <div style="font-size:0.78rem;color:var(--text-muted);">Tổng chi tiêu</div>
-                        <div style="font-size:1.2rem;font-weight:700;color:var(--primary);" id="report-total">0 ₫</div>
-                    </div>
-                    <div style="text-align:center;">
-                        <div style="font-size:0.78rem;color:var(--text-muted);">Số giao dịch</div>
-                        <div style="font-size:1.2rem;font-weight:700;color:#1a6b3c;" id="report-count">0</div>
-                    </div>
-                    <div style="text-align:center;">
-                        <div style="font-size:0.78rem;color:var(--text-muted);">Trung bình/GD</div>
-                        <div style="font-size:1.2rem;font-weight:700;color:#e67e22;" id="report-avg">0 ₫</div>
-                    </div>
-                    <div style="text-align:center;">
-                        <div style="font-size:0.78rem;color:var(--text-muted);">Danh mục</div>
-                        <div style="font-size:1.2rem;font-weight:700;color:#9333ea;" id="report-cat-count">0</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="charts-grid">
-                <div class="chart-card full-width">
-                    <div class="chart-header">
-                        <h3><i class="fas fa-chart-area"></i> Xu hướng chi tiêu theo tháng</h3>
-                    </div>
-                    <div class="chart-body" style="height:360px;">
-                        <canvas id="chart-monthly"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Top Expenses -->
-            <div class="card">
-                <div class="card-header">
-                    <h3><i class="fas fa-trophy"></i> Top 10 khoản chi tiêu lớn nhất</h3>
-                </div>
-                <div class="table-responsive">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Mô tả</th>
-                                <th>Danh mục</th>
-                                <th>Số tiền</th>
-                                <th>Thời gian</th>
-                            </tr>
-                        </thead>
-                        <tbody id="top-expenses-tbody">
-                            <tr>
-                                <td colspan="5" class="empty-state">Chọn khoảng thời gian và nhấn Cập nhật</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Category Summary -->
-            <div class="card">
-                <div class="card-header">
-                    <h3><i class="fas fa-list-alt"></i> Tổng hợp theo danh mục</h3>
-                </div>
-                <div class="summary-bars" id="category-summary-bars">
-                    <!-- Will be loaded dynamically -->
-                </div>
-            </div>
-        </section>
 
         <!-- ============= SETTINGS PAGE ============= -->
         <section class="page" id="page-settings">

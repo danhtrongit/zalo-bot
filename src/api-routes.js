@@ -87,8 +87,9 @@ router.delete('/categories/:id', (req, res) => {
 // ============= Expenses =============
 router.get('/expenses', (req, res) => {
     try {
-        const { limit, offset, category_id, from_date, to_date, search } = req.query;
-        const userId = getUserId(req);
+        const { limit, offset, category_id, from_date, to_date, search, zalo_user_id } = req.query;
+        // Admin can filter by user; non-admin forced to own
+        const userId = isAdmin(req) ? (zalo_user_id || null) : req.user.zalo_user_id;
         const result = dao.getExpenses({
             limit: parseInt(limit) || 50,
             offset: parseInt(offset) || 0,
