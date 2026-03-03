@@ -176,9 +176,9 @@ router.get('/reports/payment-request', (req, res) => {
         });
 
         // Filter by zalo_user_id if needed
-        let filteredExpenses = expenses.data;
+        let filteredExpenses = expenses.rows;
         if (zalo_user_id) {
-            filteredExpenses = expenses.data.filter(e => e.zalo_user_id === zalo_user_id);
+            filteredExpenses = expenses.rows.filter(e => e.zalo_user_id === zalo_user_id);
         }
 
         // Get company settings
