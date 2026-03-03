@@ -32,10 +32,19 @@ Bạn là trợ lý AI chuyên hỗ trợ ghi nhận và quản lý chi tiêu ch
 4. **Hỗ trợ chung**: Trả lời các câu hỏi liên quan đến quản lý chi tiêu.
 
 ## QUY TẮC TRÍCH XUẤT CHI TIÊU:
-Khi user nhập chi tiêu, trích xuất và trả về **ĐÚNG FORMAT JSON** như sau:
+
+### Trường hợp 1: Một mục chi tiêu
+Khi user chỉ nhập 1 chi tiêu, trả về:
 \`\`\`json
-{"action":"add_expense","data":{"description":"mô tả ngắn","amount":số tiền (number),"category":"tên danh mục","date":"YYYY-MM-DD","note":"ghi chú thêm nếu có"}}
+{"action":"add_expense","data":{"description":"mô tả ngắn","amount":số tiền,"category":"tên danh mục","date":"YYYY-MM-DD","note":""}}
 \`\`\`
+
+### Trường hợp 2: NHIỀU mục chi tiêu (QUAN TRỌNG)
+Khi user gửi danh sách nhiều mục chi tiêu (2 mục trở lên), PHẢI trả về:
+\`\`\`json
+{"action":"add_expenses","data":[{"description":"mô tả 1","amount":số tiền 1,"category":"danh mục","date":"YYYY-MM-DD","note":""},{"description":"mô tả 2","amount":số tiền 2,"category":"danh mục","date":"YYYY-MM-DD","note":""}]}
+\`\`\`
+Lưu ý: data là ARRAY chứa tất cả các mục. CHỈ trả về 1 JSON duy nhất cho tất cả.
 
 ## QUY TẮC NGÀY THÁNG (RẤT QUAN TRỌNG):
 - Luôn trả về trường "date" trong JSON dưới dạng YYYY-MM-DD
@@ -51,18 +60,19 @@ Khi user nhập chi tiêu, trích xuất và trả về **ĐÚNG FORMAT JSON** n
 
 Ví dụ (nếu hôm nay là 2026-03-03):
 - User: "hôm qua ăn cơm hết 200k" → {"action":"add_expense","data":{"description":"Ăn cơm","amount":200000,"category":"Ăn uống & Tiếp khách","date":"2026-03-02","note":""}}
-- User: "mua máy quay 50 triệu" → {"action":"add_expense","data":{"description":"Mua máy quay phim","amount":50000000,"category":"Sản xuất phim","date":"2026-03-03","note":""}}
-- User: "tuần trước thuê studio 15tr" → {"action":"add_expense","data":{"description":"Thuê studio","amount":15000000,"category":"Sản xuất phim","date":"2026-02-24","note":""}}
+- User gửi danh sách 3 mục → {"action":"add_expenses","data":[...3 items...]}
 
 ## QUY TẮC SỐ TIỀN:
 - "50 triệu" = 50000000
 - "2tr5" hoặc "2.5tr" = 2500000
 - "500k" = 500000
 - "1 tỷ" = 1000000000
+- "67.000" hoặc "67,000" = 67000
 - Nếu không có đơn vị, mặc định là VND
 
 ## QUY TẮC QUAN TRỌNG:
-- NẾU user yêu cầu ghi chi tiêu → PHẢI trả về JSON với action "add_expense"
+- NẾU user yêu cầu ghi CHI TIÊU → PHẢI trả về JSON với action "add_expense" hoặc "add_expenses"
+- NẾU user gửi DANH SÁCH nhiều mục → BẮT BUỘC dùng "add_expenses" (array)
 - NẾU user hỏi báo cáo/tổng kết → trả về action "get_report" 
 - NẾU user hỏi thông tin chung → trả lời bình thường (không JSON)
 - Luôn xác nhận lại chi tiêu sau khi ghi nhận
@@ -80,13 +90,13 @@ async function callAI(messages) {
             model: AI_MODEL,
             messages: messages,
             temperature: 0.3,
-            max_tokens: 1024,
+            max_tokens: 4096,
         }, {
             headers: {
                 'Authorization': `Bearer ${AI_API_KEY}`,
                 'Content-Type': 'application/json',
             },
-            timeout: 30000,
+            timeout: 60000,
         });
 
         return response.data.choices[0].message.content;
@@ -199,6 +209,71 @@ async function processMessage(userId, userName, userMessage) {
                         `🆔 Mã: #${expenseId}\n\n` +
                         `Nhập thêm chi tiêu hoặc gõ "báo cáo" để xem tổng kết.`;
                 } // end duplicate else
+
+            } else if (actionData.action === 'add_expenses' && Array.isArray(actionData.data)) {
+                // ---- BATCH: multiple expenses ----
+                const items = actionData.data;
+                const allCats = dao.getAllCategories();
+                let savedCount = 0;
+                let skippedCount = 0;
+                let totalAmount = 0;
+                const savedItems = [];
+
+                for (const item of items) {
+                    const { description, amount, category, note, date } = item;
+                    if (!description || !amount) continue;
+
+                    // Find category
+                    let cat = dao.getCategoryByName(category);
+                    if (!cat) {
+                        cat = allCats.find(c => c.name.toLowerCase().includes((category || '').toLowerCase())) ||
+                            allCats.find(c => c.name === 'Khác');
+                    }
+
+                    // Parse date
+                    let expenseDate = null;
+                    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                        expenseDate = date + ' 12:00:00';
+                    }
+
+                    // Duplicate check (skip duplicates silently in batch mode)
+                    const duplicate = dao.findDuplicateExpense(userId, amount, description);
+                    if (duplicate) {
+                        skippedCount++;
+                        continue;
+                    }
+
+                    const expenseId = dao.addExpense({
+                        category_id: cat ? cat.id : null,
+                        description,
+                        amount,
+                        currency: 'VND',
+                        note: note || '',
+                        zalo_user_id: userId,
+                        zalo_user_name: userName,
+                        created_by: 'bot',
+                        created_at: expenseDate
+                    });
+
+                    savedCount++;
+                    totalAmount += amount;
+                    savedItems.push(`#${expenseId} ${description} - ${formatCurrency(amount)}`);
+                }
+
+                reply = `✅ Đã ghi nhận ${savedCount}/${items.length} chi tiêu!\n\n`;
+                if (savedItems.length > 0) {
+                    // Show first 15 items, summarize rest
+                    const showItems = savedItems.slice(0, 15);
+                    reply += showItems.map(s => `📝 ${s}`).join('\n') + '\n';
+                    if (savedItems.length > 15) {
+                        reply += `... và ${savedItems.length - 15} mục khác\n`;
+                    }
+                }
+                reply += `\n💰 Tổng: ${formatCurrency(totalAmount)}`;
+                if (skippedCount > 0) {
+                    reply += `\n⚠️ Bỏ qua ${skippedCount} mục trùng lặp`;
+                }
+                reply += `\n\nGõ "báo cáo" để xem tổng kết.`;
 
             } else if (actionData.action === 'get_report') {
                 const summary = dao.getExpenseSummary();
