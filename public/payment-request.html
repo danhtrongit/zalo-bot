@@ -226,27 +226,53 @@
 
         /* Attachment thumbnail section */
         .attachments {
-            margin-top: 15px;
-            page-break-inside: avoid;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #ccc;
+        }
+
+        @media print {
+            .attachments {
+                page-break-before: auto;
+                page-break-inside: auto;
+            }
+
+            .att-item {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
         }
 
         .attachments h4 {
             font-size: 13px;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
+            font-weight: bold;
         }
 
         .att-grid {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 12px;
+        }
+
+        .att-item {
+            text-align: center;
+            width: 150px;
         }
 
         .att-img {
-            width: 120px;
-            height: 90px;
+            width: 150px;
+            height: 110px;
             object-fit: cover;
-            border: 1px solid #ccc;
+            border: 1px solid #999;
             border-radius: 4px;
+        }
+
+        .att-label {
+            font-size: 10px;
+            color: #555;
+            margin-top: 3px;
+            word-break: break-word;
         }
     </style>
 </head>
@@ -437,10 +463,13 @@
 
                 ${hasImages ? `
                 <div class="attachments">
-                    <h4>📎 Chứng từ đính kèm:</h4>
+                    <h4>Chứng từ đính kèm (${userExpenses.filter(e => e.image_url).length} ảnh):</h4>
                     <div class="att-grid">
-                        ${userExpenses.filter(e => e.image_url).map(e => `
-                            <img src="${e.image_url}" class="att-img" title="${e.description}" alt="receipt">
+                        ${userExpenses.filter(e => e.image_url).map((e, i) => `
+                            <div class="att-item">
+                                <img src="${e.image_url}" class="att-img" alt="receipt-${i + 1}">
+                                <div class="att-label">${i + 1}. ${e.description}</div>
+                            </div>
                         `).join('')}
                     </div>
                 </div>` : ''}
