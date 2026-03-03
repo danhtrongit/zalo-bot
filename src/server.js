@@ -481,6 +481,10 @@ app.get('/', authMiddleware, (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
+app.get('/payment-request', authMiddleware, (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'payment-request.html'));
+});
+
 // ============= Bot Info Endpoint =============
 app.get('/api/bot-info', apiAuthMiddleware, async (req, res) => {
     try {

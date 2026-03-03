@@ -72,6 +72,7 @@ function navigateTo(page) {
             break;
         case 'settings':
             loadBotInfo();
+            loadCompanySettings();
             break;
         case 'users':
             loadUsers();
@@ -1115,4 +1116,55 @@ async function deleteUser(id) {
     } catch (err) {
         showToast('Lỗi khi xóa', 'error');
     }
+}
+
+// ============= Company Settings =============
+async function loadCompanySettings() {
+    try {
+        const res = await apiGet('/settings');
+        if (res.ok) {
+            Object.keys(res.result).forEach(key => {
+                const el = document.getElementById(`setting-${key}`);
+                if (el) el.value = res.result[key] || '';
+            });
+        }
+    } catch (err) {
+        console.error('Error loading settings:', err);
+    }
+}
+
+async function saveCompanySettings() {
+    const fields = ['company_name', 'company_address', 'company_tax_code', 'company_phone',
+        'company_bank_account', 'company_bank_name',
+        'approver_name', 'approver_title', 'accountant_name'];
+    const data = {};
+    fields.forEach(key => {
+        const el = document.getElementById(`setting-${key}`);
+        if (el) data[key] = el.value.trim();
+    });
+    try {
+        const res = await apiPost('/settings', data);
+        if (res.ok) {
+            showToast('Đã lưu thông tin công ty', 'success');
+        } else {
+            showToast(res.error || 'Lỗi', 'error');
+        }
+    } catch (err) {
+        showToast('Lỗi khi lưu', 'error');
+    }
+}
+
+// ============= Payment Request =============
+function generatePaymentRequest() {
+    const fromDate = document.getElementById('report-from')?.value || '';
+    const toDate = document.getElementById('report-to')?.value || '';
+    const userId = document.getElementById('report-user')?.value || '';
+
+    const params = new URLSearchParams();
+    if (fromDate) params.append('from_date', fromDate);
+    if (toDate) params.append('to_date', toDate);
+    if (userId) params.append('zalo_user_id', userId);
+
+    const url = `/payment-request?${params.toString()}`;
+    window.open(url, '_blank');
 }

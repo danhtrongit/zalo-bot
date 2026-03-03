@@ -137,4 +137,80 @@ router.get('/reports/top-expenses', (req, res) => {
     }
 });
 
+// ============= Settings =============
+router.get('/settings', (req, res) => {
+    try {
+        const keys = ['company_name', 'company_address', 'company_tax_code', 'company_phone',
+            'company_bank_account', 'company_bank_name',
+            'approver_name', 'approver_title', 'accountant_name'];
+        const settings = {};
+        keys.forEach(k => { settings[k] = dao.getSetting(k) || ''; });
+        res.json({ ok: true, result: settings });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.post('/settings', (req, res) => {
+    try {
+        const data = req.body;
+        Object.keys(data).forEach(key => {
+            dao.setSetting(key, data[key]);
+        });
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ============= Payment Request Form =============
+router.get('/reports/payment-request', (req, res) => {
+    try {
+        const { from_date, to_date, zalo_user_id } = req.query;
+        // Get expenses for the form
+        const expenses = dao.getExpenses({
+            limit: 1000,
+            from_date,
+            to_date,
+            ...(zalo_user_id ? { search: '', category_id: undefined } : {}),
+        });
+
+        // Filter by zalo_user_id if needed
+        let filteredExpenses = expenses.data;
+        if (zalo_user_id) {
+            filteredExpenses = expenses.data.filter(e => e.zalo_user_id === zalo_user_id);
+        }
+
+        // Get company settings
+        const settings = {};
+        ['company_name', 'company_address', 'company_tax_code', 'company_phone',
+            'company_bank_account', 'company_bank_name',
+            'approver_name', 'approver_title', 'accountant_name'].forEach(k => {
+                settings[k] = dao.getSetting(k) || '';
+            });
+
+        // Get requester name
+        let requesterName = 'Tất cả nhân viên';
+        if (zalo_user_id) {
+            const user = filteredExpenses.find(e => e.zalo_user_id === zalo_user_id);
+            requesterName = user?.zalo_user_name || zalo_user_id;
+        }
+
+        res.json({
+            ok: true,
+            result: {
+                settings,
+                requester_name: requesterName,
+                from_date: from_date || '',
+                to_date: to_date || '',
+                expenses: filteredExpenses,
+                total: filteredExpenses.reduce((s, e) => s + e.amount, 0),
+                count: filteredExpenses.length,
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
 module.exports = router;

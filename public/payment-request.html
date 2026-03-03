@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Giấy đề nghị thanh toán</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        @page {
+            size: A4;
+            margin: 15mm 20mm;
+        }
+
+        body {
+            font-family: 'Times New Roman', serif;
+            font-size: 13px;
+            color: #000;
+            background: #f0f0f0;
+            line-height: 1.5;
+        }
+
+        .page-container {
+            max-width: 210mm;
+            margin: 10mm auto;
+            background: #fff;
+            padding: 15mm 20mm;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        @media print {
+            body {
+                background: #fff;
+            }
+
+            .page-container {
+                box-shadow: none;
+                margin: 0;
+                padding: 0;
+                max-width: none;
+            }
+
+            .no-print {
+                display: none !important;
+            }
+
+            .page-break {
+                page-break-before: always;
+            }
+        }
+
+        /* Header */
+        .doc-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .company-name {
+            font-size: 15px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .company-info {
+            font-size: 12px;
+            color: #333;
+        }
+
+        .doc-title {
+            font-size: 20px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin: 18px 0 5px;
+        }
+
+        .doc-date {
+            font-size: 13px;
+            font-style: italic;
+            margin-bottom: 15px;
+        }
+
+        /* Info section */
+        .info-section {
+            margin-bottom: 12px;
+        }
+
+        .info-row {
+            display: flex;
+            margin-bottom: 4px;
+        }
+
+        .info-label {
+            width: 180px;
+            font-weight: bold;
+        }
+
+        .info-value {
+            flex: 1;
+            border-bottom: 1px dotted #999;
+            padding-left: 4px;
+        }
+
+        /* Table */
+        .expense-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 12.5px;
+        }
+
+        .expense-table th,
+        .expense-table td {
+            border: 1px solid #000;
+            padding: 5px 8px;
+            text-align: left;
+        }
+
+        .expense-table th {
+            background: #f5f5f5;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .expense-table .text-right {
+            text-align: right;
+        }
+
+        .expense-table .text-center {
+            text-align: center;
+        }
+
+        .expense-table .total-row {
+            font-weight: bold;
+            background: #f9f9f9;
+        }
+
+        /* Amount in words */
+        .amount-words {
+            margin: 10px 0;
+            font-style: italic;
+            font-size: 13px;
+        }
+
+        .amount-words strong {
+            font-style: normal;
+        }
+
+        /* Signatures */
+        .signatures {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        .sig-block {
+            width: 30%;
+        }
+
+        .sig-title {
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        .sig-subtitle {
+            font-size: 11px;
+            font-style: italic;
+            color: #666;
+        }
+
+        .sig-name {
+            margin-top: 60px;
+            font-weight: bold;
+        }
+
+        /* Print toolbar */
+        .print-toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #00582a;
+            color: #fff;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .print-toolbar button {
+            background: #fff;
+            color: #00582a;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .print-toolbar button:hover {
+            background: #e0e0e0;
+        }
+
+        .print-toolbar .back-btn {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+        }
+
+        .print-toolbar .back-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px;
+            font-size: 16px;
+            color: #666;
+        }
+
+        /* Attachment thumbnail section */
+        .attachments {
+            margin-top: 15px;
+            page-break-inside: avoid;
+        }
+
+        .attachments h4 {
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .att-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .att-img {
+            width: 120px;
+            height: 90px;
+            object-fit: cover;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Print Toolbar -->
+    <div class="print-toolbar no-print" id="toolbar">
+        <div style="display:flex;gap:10px;align-items:center;">
+            <button class="back-btn" onclick="window.close()">← Quay lại</button>
+            <span style="font-size:14px;">Giấy đề nghị thanh toán — VIETNEW ENTERTAINMENT</span>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button onclick="window.print()">🖨️ In / Xuất PDF</button>
+        </div>
+    </div>
+
+    <div style="height:55px;" class="no-print"></div>
+
+    <div id="content">
+        <div class="loading">⏳ Đang tải dữ liệu...</div>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const fromDate = params.get('from_date') || '';
+        const toDate = params.get('to_date') || '';
+        const userId = params.get('zalo_user_id') || '';
+
+        function formatCurrency(amount) {
+            if (!amount) return '0';
+            return new Intl.NumberFormat('vi-VN').format(amount);
+        }
+
+        function formatDate(str) {
+            if (!str) return '';
+            const d = new Date(str);
+            return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+        }
+
+        function numberToVietnameseWords(n) {
+            if (n === 0) return 'không đồng';
+            const ones = ['', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
+            const units = ['', 'nghìn', 'triệu', 'tỷ'];
+
+            function readGroup(num) {
+                let result = '';
+                const h = Math.floor(num / 100);
+                const t = Math.floor((num % 100) / 10);
+                const o = num % 10;
+                if (h > 0) result += ones[h] + ' trăm ';
+                if (t > 1) result += ones[t] + ' mươi ';
+                else if (t === 1) result += 'mười ';
+                else if (h > 0 && o > 0) result += 'lẻ ';
+                if (t > 1 && o === 5) result += 'lăm';
+                else if (t > 0 && o === 1 && t !== 1) result += 'mốt';
+                else if (o > 0) result += ones[o];
+                return result.trim();
+            }
+
+            let result = '';
+            let unitIndex = 0;
+            while (n > 0) {
+                const group = n % 1000;
+                if (group > 0) {
+                    result = readGroup(group) + ' ' + units[unitIndex] + ' ' + result;
+                }
+                n = Math.floor(n / 1000);
+                unitIndex++;
+            }
+            result = result.trim() + ' đồng';
+            return result.charAt(0).toUpperCase() + result.slice(1);
+        }
+
+        async function loadData() {
+            try {
+                const url = `/api/reports/payment-request?from_date=${fromDate}&to_date=${toDate}&zalo_user_id=${userId}`;
+                const res = await fetch(url, { credentials: 'include' });
+                const json = await res.json();
+                if (!json.ok) throw new Error(json.error);
+                renderForm(json.result);
+            } catch (err) {
+                document.getElementById('content').innerHTML = `
+                <div class="page-container">
+                    <div class="loading" style="color:red;">❌ Lỗi: ${err.message}<br>Vui lòng đăng nhập dashboard trước.</div>
+                </div>`;
+            }
+        }
+
+        function renderForm(data) {
+            const { settings, requester_name, from_date, to_date, expenses, total } = data;
+            const now = new Date();
+            const today = `Ngày ${now.getDate()} tháng ${now.getMonth() + 1} năm ${now.getFullYear()}`;
+
+            const companyName = settings.company_name || 'VIETNEW ENTERTAINMENT';
+            const companyAddr = settings.company_address || '';
+            const taxCode = settings.company_tax_code || '';
+
+            // If filtered by user, group by that user; else group all
+            const expensesByUser = {};
+            expenses.forEach(e => {
+                const uName = e.zalo_user_name || 'Không rõ';
+                if (!expensesByUser[uName]) expensesByUser[uName] = [];
+                expensesByUser[uName].push(e);
+            });
+
+            // Generate individual forms or one combined form
+            const users = Object.keys(expensesByUser);
+            const isMultiUser = users.length > 1 && !userId;
+
+            let html = '';
+
+            users.forEach((userName, pageIdx) => {
+                const userExpenses = expensesByUser[userName];
+                const userTotal = userExpenses.reduce((s, e) => s + e.amount, 0);
+                const hasImages = userExpenses.some(e => e.image_url);
+
+                html += `
+            <div class="page-container ${pageIdx > 0 ? 'page-break' : ''}">
+                <div class="doc-header">
+                    <div class="company-name">${companyName}</div>
+                    ${companyAddr ? `<div class="company-info">${companyAddr}</div>` : ''}
+                    ${taxCode ? `<div class="company-info">MST: ${taxCode}</div>` : ''}
+                    <div class="doc-title">GIẤY ĐỀ NGHỊ THANH TOÁN</div>
+                    <div class="doc-date">${today}</div>
+                </div>
+
+                <div class="info-section">
+                    <div class="info-row">
+                        <span class="info-label">Kính gửi:</span>
+                        <span class="info-value">${settings.approver_title || 'Ban Giám Đốc'} ${companyName}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Người đề nghị:</span>
+                        <span class="info-value">${userId ? requester_name : userName}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Bộ phận:</span>
+                        <span class="info-value">${companyName}</span>
+                    </div>
+                    ${from_date || to_date ? `
+                    <div class="info-row">
+                        <span class="info-label">Kỳ thanh toán:</span>
+                        <span class="info-value">${from_date ? formatDate(from_date) : '...'} đến ${to_date ? formatDate(to_date) : '...'}</span>
+                    </div>` : ''}
+                    <div class="info-row">
+                        <span class="info-label">Nội dung đề nghị:</span>
+                        <span class="info-value">Thanh toán các khoản chi phí phát sinh theo bảng chi tiết bên dưới</span>
+                    </div>
+                </div>
+
+                <table class="expense-table">
+                    <thead>
+                        <tr>
+                            <th style="width:35px;">STT</th>
+                            <th>Nội dung</th>
+                            <th>Danh mục</th>
+                            <th style="width:100px;">Ngày</th>
+                            <th style="width:130px;">Số tiền (VNĐ)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${userExpenses.map((e, i) => `
+                        <tr>
+                            <td class="text-center">${i + 1}</td>
+                            <td>${e.description}${e.note ? ' (' + e.note + ')' : ''}</td>
+                            <td class="text-center">${e.category_icon || ''} ${e.category_name || 'Khác'}</td>
+                            <td class="text-center">${formatDate(e.created_at)}</td>
+                            <td class="text-right">${formatCurrency(e.amount)}</td>
+                        </tr>`).join('')}
+                        <tr class="total-row">
+                            <td colspan="4" class="text-right">TỔNG CỘNG:</td>
+                            <td class="text-right">${formatCurrency(userTotal)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="amount-words">
+                    <strong>Bằng chữ:</strong> ${numberToVietnameseWords(Math.round(userTotal))}
+                </div>
+
+                ${settings.company_bank_account ? `
+                <div class="info-section" style="margin-top:10px;">
+                    <div class="info-row">
+                        <span class="info-label">Thanh toán vào TK:</span>
+                        <span class="info-value">${settings.company_bank_account} — ${settings.company_bank_name || ''}</span>
+                    </div>
+                </div>` : ''}
+
+                ${hasImages ? `
+                <div class="attachments">
+                    <h4>📎 Chứng từ đính kèm:</h4>
+                    <div class="att-grid">
+                        ${userExpenses.filter(e => e.image_url).map(e => `
+                            <img src="${e.image_url}" class="att-img" title="${e.description}" alt="receipt">
+                        `).join('')}
+                    </div>
+                </div>` : ''}
+
+                <div class="signatures">
+                    <div class="sig-block">
+                        <div class="sig-title">Người đề nghị</div>
+                        <div class="sig-subtitle">(Ký, ghi rõ họ tên)</div>
+                        <div class="sig-name">${userId ? requester_name : userName}</div>
+                    </div>
+                    <div class="sig-block">
+                        <div class="sig-title">Kế toán</div>
+                        <div class="sig-subtitle">(Ký, ghi rõ họ tên)</div>
+                        <div class="sig-name">${settings.accountant_name || ''}</div>
+                    </div>
+                    <div class="sig-block">
+                        <div class="sig-title">${settings.approver_title || 'Giám đốc'}</div>
+                        <div class="sig-subtitle">(Ký, ghi rõ họ tên)</div>
+                        <div class="sig-name">${settings.approver_name || ''}</div>
+                    </div>
+                </div>
+            </div>`;
+            });
+
+            document.getElementById('content').innerHTML = html;
+        }
+
+        loadData();
+    </script>
+</body>
+
+</html>
