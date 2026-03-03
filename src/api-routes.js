@@ -36,7 +36,8 @@ router.get('/me', (req, res) => {
 // ============= Dashboard Stats =============
 router.get('/stats', (req, res) => {
     try {
-        const userId = getUserId(req);
+        // Non-admin: force own data
+        const userId = isAdmin(req) ? getUserId(req) : req.user.zalo_user_id;
         const stats = dao.getDashboardStats(userId);
         res.json({ ok: true, result: stats });
     } catch (err) {
@@ -103,6 +104,9 @@ router.get('/expenses', (req, res) => {
 
 router.post('/expenses', (req, res) => {
     try {
+        if (req.body.amount !== undefined && req.body.amount < 1000) {
+            return res.status(400).json({ ok: false, error: 'Số tiền tối thiểu là 1.000 ₫' });
+        }
         const id = dao.addExpense(req.body);
         res.json({ ok: true, result: { id } });
     } catch (err) {
@@ -132,7 +136,8 @@ router.delete('/expenses/:id', (req, res) => {
 router.get('/reports/summary', (req, res) => {
     try {
         const { from_date, to_date, zalo_user_id } = req.query;
-        const effectiveUserId = getUserId(req) || zalo_user_id;
+        // Non-admin can only see own reports
+        const effectiveUserId = isAdmin(req) ? (zalo_user_id || getUserId(req)) : req.user.zalo_user_id;
         const summary = dao.getExpenseSummary({ from_date, to_date, zalo_user_id: effectiveUserId });
         res.json({ ok: true, result: summary });
     } catch (err) {
@@ -144,7 +149,7 @@ router.get('/reports/monthly-trend', (req, res) => {
     try {
         const months = parseInt(req.query.months) || 12;
         const { zalo_user_id } = req.query;
-        const effectiveUserId = getUserId(req) || zalo_user_id;
+        const effectiveUserId = isAdmin(req) ? (zalo_user_id || getUserId(req)) : req.user.zalo_user_id;
         const trend = dao.getMonthlyTrend(months, effectiveUserId);
         res.json({ ok: true, result: trend });
     } catch (err) {
@@ -156,7 +161,7 @@ router.get('/reports/daily-trend', (req, res) => {
     try {
         const days = parseInt(req.query.days) || 30;
         const { zalo_user_id } = req.query;
-        const effectiveUserId = getUserId(req) || zalo_user_id;
+        const effectiveUserId = isAdmin(req) ? (zalo_user_id || getUserId(req)) : req.user.zalo_user_id;
         const trend = dao.getDailyTrend(days, effectiveUserId);
         res.json({ ok: true, result: trend });
     } catch (err) {
@@ -167,7 +172,7 @@ router.get('/reports/daily-trend', (req, res) => {
 router.get('/reports/top-expenses', (req, res) => {
     try {
         const { limit, from_date, to_date, zalo_user_id } = req.query;
-        const effectiveUserId = getUserId(req) || zalo_user_id;
+        const effectiveUserId = isAdmin(req) ? (zalo_user_id || getUserId(req)) : req.user.zalo_user_id;
         const top = dao.getTopExpenses(parseInt(limit) || 10, from_date, to_date, effectiveUserId);
         res.json({ ok: true, result: top });
     } catch (err) {
@@ -253,37 +258,44 @@ router.get('/reports/payment-request', (req, res) => {
 // ============= Pending Actions =============
 router.post('/pending-actions', (req, res) => {
     try {
-        const { action_type, expense_id, new_data } = req.body;
+        const { action_type, expense_id, new_data, reason } = req.body;
         if (!action_type || !expense_id) return res.status(400).json({ ok: false, error: 'Missing fields' });
+
+        // Validate min amount
+        if (new_data && new_data.amount !== undefined && new_data.amount < 1000) {
+            return res.status(400).json({ ok: false, error: 'Số tiền tối thiểu là 1.000 ₫' });
+        }
 
         const expense = dao.getExpenseById(expense_id);
         if (!expense) return res.status(404).json({ ok: false, error: 'Expense not found' });
 
-        // Non-admin can only modify their own expenses
         if (!isAdmin(req) && expense.zalo_user_id !== req.user.zalo_user_id) {
             return res.status(403).json({ ok: false, error: 'Bạn chỉ có thể sửa/xóa chi tiêu của chính mình' });
         }
 
-        // Admin can edit/delete directly
+        // Require reason for non-admin
+        if (!isAdmin(req) && !reason) {
+            return res.status(400).json({ ok: false, error: 'Vui lòng nhập lý do sửa/xóa' });
+        }
+
+        // Admin can edit/delete directly (with edit history)
         if (isAdmin(req)) {
             if (action_type === 'delete') {
-                dao.deleteExpense(expense_id);
-                return res.json({ ok: true, direct: true, message: 'Deleted' });
+                dao.softDeleteExpense(expense_id, req.user.zalo_user_id, reason || 'Admin deleted');
+                return res.json({ ok: true, direct: true, message: 'Đã xóa (soft delete)' });
             } else if (action_type === 'edit' && new_data) {
-                const sets = [];
-                const vals = [];
-                if (new_data.description !== undefined) { sets.push('description = ?'); vals.push(new_data.description); }
-                if (new_data.amount !== undefined) { sets.push('amount = ?'); vals.push(new_data.amount); }
-                if (new_data.category_id !== undefined) { sets.push('category_id = ?'); vals.push(new_data.category_id); }
-                if (new_data.note !== undefined) { sets.push('note = ?'); vals.push(new_data.note); }
-                if (sets.length > 0) {
-                    dao.updateExpense(expense_id, new_data);
+                // Record edit history
+                for (const [key, val] of Object.entries(new_data)) {
+                    if (val !== undefined && expense[key] !== val && ['description', 'amount', 'category_id', 'note'].includes(key)) {
+                        dao.addEditHistory(expense_id, key, expense[key], val, req.user.zalo_user_id, req.user.display_name, reason || '');
+                    }
                 }
-                return res.json({ ok: true, direct: true, message: 'Updated' });
+                dao.updateExpense(expense_id, new_data);
+                return res.json({ ok: true, direct: true, message: 'Đã cập nhật' });
             }
         }
 
-        // Regular user: create pending action
+        // Regular user: create pending action with reason
         const id = dao.createPendingAction({
             action_type,
             expense_id,
@@ -291,6 +303,7 @@ router.post('/pending-actions', (req, res) => {
             requested_by_name: req.user.display_name,
             old_data: expense,
             new_data: new_data || null,
+            reason: reason || '',
         });
 
         // Notify admin via Zalo
@@ -300,6 +313,7 @@ router.post('/pending-actions', (req, res) => {
                 `👤 ${req.user.display_name}\n` +
                 `📝 #${expense_id}: ${expense.description}\n` +
                 `💰 ${expense.amount?.toLocaleString('vi-VN')} ₫\n` +
+                (reason ? `📌 Lý do: ${reason}\n` : '') +
                 (action_type === 'edit' && new_data ? `✏️ Sửa thành: ${new_data.description || expense.description} - ${(new_data.amount || expense.amount)?.toLocaleString('vi-VN')} ₫\n` : '') +
                 `\nVào Dashboard để duyệt.`;
             zaloApi.sendMessage(ADMIN_ZALO_ID, msg).catch(e => console.error('[Notify] Error:', e.message));
@@ -335,13 +349,10 @@ router.post('/pending-actions/:id/approve', adminOnly, (req, res) => {
     try {
         const action = dao.approvePendingAction(req.params.id, req.user.zalo_user_id);
         if (!action) return res.status(404).json({ ok: false, error: 'Not found or already processed' });
-
-        // Notify requester
         const actionLabel = action.action_type === 'delete' ? 'xóa' : 'sửa';
         zaloApi.sendMessage(action.requested_by,
             `✅ Yêu cầu ${actionLabel} chi tiêu #${action.expense_id} đã được duyệt.`
         ).catch(e => console.error('[Notify] Error:', e.message));
-
         res.json({ ok: true });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });
@@ -353,13 +364,213 @@ router.post('/pending-actions/:id/reject', adminOnly, (req, res) => {
         const action = dao.getPendingActionById(req.params.id);
         if (!action) return res.status(404).json({ ok: false, error: 'Not found' });
         dao.rejectPendingAction(req.params.id, req.user.zalo_user_id);
-
-        // Notify requester
         const actionLabel = action.action_type === 'delete' ? 'xóa' : 'sửa';
         zaloApi.sendMessage(action.requested_by,
             `❌ Yêu cầu ${actionLabel} chi tiêu #${action.expense_id} đã bị từ chối.`
         ).catch(e => console.error('[Notify] Error:', e.message));
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
 
+// ============= Deleted Expenses =============
+router.get('/expenses/deleted', (req, res) => {
+    try {
+        const userId = isAdmin(req) ? null : req.user.zalo_user_id;
+        const deleted = dao.getDeletedExpenses(userId);
+        res.json({ ok: true, result: deleted });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.post('/expenses/:id/restore', adminOnly, (req, res) => {
+    try {
+        dao.restoreExpense(req.params.id);
+        res.json({ ok: true, message: 'Đã khôi phục' });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ============= Edit History =============
+router.get('/expenses/:id/history', (req, res) => {
+    try {
+        const history = dao.getEditHistory(req.params.id);
+        res.json({ ok: true, result: history });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ============= Payment Requests (Đề nghị thanh toán) =============
+router.post('/payment-requests', (req, res) => {
+    try {
+        const { from_date, to_date, expense_ids, note } = req.body;
+        if (!expense_ids) return res.status(400).json({ ok: false, error: 'Chưa chọn chi tiêu' });
+
+        const idList = expense_ids.split(',').map(Number).filter(n => n > 0);
+        let total = 0;
+        for (const eid of idList) {
+            const exp = dao.getExpenseById(eid);
+            if (exp) total += exp.amount;
+        }
+
+        const id = dao.createPaymentRequest({
+            requested_by: req.user.zalo_user_id,
+            requested_by_name: req.user.display_name,
+            from_date, to_date,
+            total_amount: total,
+            expense_count: idList.length,
+            expense_ids,
+            note,
+        });
+
+        // Notify admin
+        if (ADMIN_ZALO_ID && !isAdmin(req)) {
+            zaloApi.sendMessage(ADMIN_ZALO_ID,
+                `💳 ĐỀ NGHỊ THANH TOÁN MỚI\n\n👤 ${req.user.display_name}\n💰 ${total.toLocaleString('vi-VN')} ₫\n📋 ${idList.length} giao dịch\n\nVào Dashboard để xem & duyệt.`
+            ).catch(e => console.error('[Notify] Error:', e.message));
+        }
+
+        res.json({ ok: true, result: { id } });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.get('/payment-requests', (req, res) => {
+    try {
+        const userId = isAdmin(req) ? null : req.user.zalo_user_id;
+        const requests = dao.getPaymentRequests(userId);
+        res.json({ ok: true, result: requests });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.get('/payment-requests/:id', (req, res) => {
+    try {
+        const pr = dao.getPaymentRequestById(req.params.id);
+        if (!pr) return res.status(404).json({ ok: false, error: 'Not found' });
+
+        // Get expense details
+        let expenses = [];
+        if (pr.expense_ids) {
+            const ids = pr.expense_ids.split(',').map(Number).filter(n => n > 0);
+            for (const eid of ids) {
+                const exp = dao.getExpenseById(eid);
+                if (exp) expenses.push(exp);
+            }
+        }
+        res.json({ ok: true, result: { ...pr, expenses } });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.post('/payment-requests/:id/approve', adminOnly, (req, res) => {
+    try {
+        dao.approvePaymentRequest(req.params.id, req.user.zalo_user_id);
+        const pr = dao.getPaymentRequestById(req.params.id);
+        if (pr) {
+            zaloApi.sendMessage(pr.requested_by,
+                `✅ Đề nghị thanh toán #${pr.id} đã được duyệt (${pr.total_amount.toLocaleString('vi-VN')} ₫)`
+            ).catch(e => console.error('[Notify] Error:', e.message));
+        }
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.post('/payment-requests/:id/paid', adminOnly, (req, res) => {
+    try {
+        dao.markPaymentRequestPaid(req.params.id);
+        const pr = dao.getPaymentRequestById(req.params.id);
+        if (pr) {
+            zaloApi.sendMessage(pr.requested_by,
+                `💰 Đề nghị thanh toán #${pr.id} đã được thanh toán! (${pr.total_amount.toLocaleString('vi-VN')} ₫)`
+            ).catch(e => console.error('[Notify] Error:', e.message));
+        }
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.post('/payment-requests/:id/reject', adminOnly, (req, res) => {
+    try {
+        dao.rejectPaymentRequest(req.params.id);
+        const pr = dao.getPaymentRequestById(req.params.id);
+        if (pr) {
+            zaloApi.sendMessage(pr.requested_by,
+                `❌ Đề nghị thanh toán #${pr.id} đã bị từ chối.`
+            ).catch(e => console.error('[Notify] Error:', e.message));
+        }
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ============= Advances (Tạm ứng) =============
+router.post('/advances', (req, res) => {
+    try {
+        const { amount, purpose, note } = req.body;
+        if (!amount || amount < 1000) return res.status(400).json({ ok: false, error: 'Số tiền tối thiểu 1.000 ₫' });
+
+        const id = dao.createAdvance({
+            zalo_user_id: req.user.zalo_user_id,
+            zalo_user_name: req.user.display_name,
+            amount, purpose, note,
+        });
+
+        if (ADMIN_ZALO_ID && !isAdmin(req)) {
+            zaloApi.sendMessage(ADMIN_ZALO_ID,
+                `💸 YÊU CẦU TẠM ỨNG MỚI\n\n👤 ${req.user.display_name}\n💰 ${amount.toLocaleString('vi-VN')} ₫\n📝 ${purpose || 'Không ghi chú'}\n\nVào Dashboard để duyệt.`
+            ).catch(e => console.error('[Notify] Error:', e.message));
+        }
+
+        res.json({ ok: true, result: { id } });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.get('/advances', (req, res) => {
+    try {
+        const userId = isAdmin(req) ? null : req.user.zalo_user_id;
+        const advances = dao.getAdvances(userId);
+        res.json({ ok: true, result: advances });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.post('/advances/:id/approve', adminOnly, (req, res) => {
+    try {
+        dao.approveAdvance(req.params.id, req.user.zalo_user_id);
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.post('/advances/:id/reject', adminOnly, (req, res) => {
+    try {
+        dao.rejectAdvance(req.params.id);
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.post('/advances/:id/settle', adminOnly, (req, res) => {
+    try {
+        const { settled_amount, note } = req.body;
+        dao.settleAdvance(req.params.id, settled_amount || 0, note || '');
         res.json({ ok: true });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });
@@ -373,11 +584,10 @@ router.get('/my-expenses', (req, res) => {
         const expenses = dao.getExpenses({
             limit: parseInt(limit) || 50,
             offset: parseInt(offset) || 0,
-            from_date, to_date
+            from_date, to_date,
+            user_id: req.user.zalo_user_id,
         });
-        // Filter to user's own
-        const myExpenses = expenses.rows.filter(e => e.zalo_user_id === req.user.zalo_user_id);
-        res.json({ ok: true, result: { rows: myExpenses, total: myExpenses.length } });
+        res.json({ ok: true, result: expenses });
     } catch (err) {
         res.status(500).json({ ok: false, error: err.message });
     }

@@ -182,6 +182,70 @@ if (ADMIN_ZALO_ID) {
 // Migration: add department column if missing
 try { db.prepare('ALTER TABLE allowed_users ADD COLUMN department TEXT DEFAULT ""').run(); } catch (e) { /* already exists */ }
 
+// Migration: soft delete for expenses
+try { db.prepare('ALTER TABLE expenses ADD COLUMN is_deleted INTEGER DEFAULT 0').run(); } catch (e) { }
+try { db.prepare('ALTER TABLE expenses ADD COLUMN deleted_at DATETIME').run(); } catch (e) { }
+try { db.prepare('ALTER TABLE expenses ADD COLUMN deleted_by TEXT').run(); } catch (e) { }
+try { db.prepare('ALTER TABLE expenses ADD COLUMN delete_reason TEXT').run(); } catch (e) { }
+// Payment status: unpaid / requested / paid
+try { db.prepare('ALTER TABLE expenses ADD COLUMN payment_status TEXT DEFAULT "unpaid"').run(); } catch (e) { }
+
+// Migration: reason field for pending_actions
+try { db.prepare('ALTER TABLE pending_actions ADD COLUMN reason TEXT DEFAULT ""').run(); } catch (e) { }
+
+// Edit history table
+try {
+  db.prepare(`CREATE TABLE IF NOT EXISTS edit_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expense_id INTEGER NOT NULL,
+    field_name TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    changed_by TEXT NOT NULL,
+    changed_by_name TEXT DEFAULT '',
+    change_reason TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`).run();
+} catch (e) { }
+
+// Payment requests table (tách riêng quản lý thanh toán)
+try {
+  db.prepare(`CREATE TABLE IF NOT EXISTS payment_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    requested_by TEXT NOT NULL,
+    requested_by_name TEXT DEFAULT '',
+    from_date TEXT,
+    to_date TEXT,
+    total_amount REAL DEFAULT 0,
+    expense_count INTEGER DEFAULT 0,
+    expense_ids TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending',
+    approved_by TEXT,
+    approved_at DATETIME,
+    paid_at DATETIME,
+    note TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`).run();
+} catch (e) { }
+
+// Advances table (tạm ứng)
+try {
+  db.prepare(`CREATE TABLE IF NOT EXISTS advances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    zalo_user_id TEXT NOT NULL,
+    zalo_user_name TEXT DEFAULT '',
+    amount REAL NOT NULL,
+    purpose TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending',
+    approved_by TEXT,
+    approved_at DATETIME,
+    settled_at DATETIME,
+    settled_amount REAL DEFAULT 0,
+    note TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`).run();
+} catch (e) { }
+
 // =============  DAO Functions =============
 
 const dao = {
@@ -271,6 +335,7 @@ const dao = {
     let where = [];
     let params = [];
 
+    where.push('(e.is_deleted = 0 OR e.is_deleted IS NULL)');
     if (user_id) { where.push('e.zalo_user_id = ?'); params.push(user_id); }
     if (category_id) { where.push('e.category_id = ?'); params.push(category_id); }
     if (from_date) { where.push("e.created_at >= ?"); params.push(from_date); }
@@ -317,14 +382,45 @@ const dao = {
     db.prepare('DELETE FROM expenses WHERE id = ?').run(id);
   },
 
+  // Soft delete
+  softDeleteExpense(id, deletedBy, reason = '') {
+    db.prepare(`UPDATE expenses SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, deleted_by = ?, delete_reason = ? WHERE id = ?`)
+      .run(deletedBy, reason, id);
+  },
+
+  restoreExpense(id) {
+    db.prepare(`UPDATE expenses SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL, delete_reason = NULL WHERE id = ?`)
+      .run(id);
+  },
+
+  getDeletedExpenses(userId) {
+    let sql = `SELECT e.*, c.name as category_name, c.icon as category_icon
+      FROM expenses e LEFT JOIN categories c ON e.category_id = c.id
+      WHERE e.is_deleted = 1`;
+    const params = [];
+    if (userId) { sql += ' AND e.zalo_user_id = ?'; params.push(userId); }
+    sql += ' ORDER BY e.deleted_at DESC LIMIT 100';
+    return db.prepare(sql).all(...params);
+  },
+
+  // Edit history
+  addEditHistory(expenseId, fieldName, oldValue, newValue, changedBy, changedByName = '', reason = '') {
+    db.prepare(`INSERT INTO edit_history (expense_id, field_name, old_value, new_value, changed_by, changed_by_name, change_reason)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(expenseId, fieldName, String(oldValue ?? ''), String(newValue ?? ''), changedBy, changedByName, reason);
+  },
+
+  getEditHistory(expenseId) {
+    return db.prepare('SELECT * FROM edit_history WHERE expense_id = ? ORDER BY created_at DESC').all(expenseId);
+  },
+
   // ---- Statistics ----
   getExpenseSummary({ from_date, to_date, zalo_user_id } = {}) {
-    let where = [];
+    let where = ['(e.is_deleted = 0 OR e.is_deleted IS NULL)'];
     let params = [];
     if (from_date) { where.push("e.created_at >= ?"); params.push(from_date); }
     if (to_date) { where.push("e.created_at <= ?"); params.push(to_date + ' 23:59:59'); }
     if (zalo_user_id) { where.push("e.zalo_user_id = ?"); params.push(zalo_user_id); }
-    const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
+    const whereClause = 'WHERE ' + where.join(' AND ');
 
     const total = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM expenses e ${whereClause}`).get(...params);
     const count = db.prepare(`SELECT COUNT(*) as count FROM expenses e ${whereClause}`).get(...params);
@@ -584,13 +680,14 @@ const dao = {
     `).get(id);
   },
 
-  createPendingAction({ action_type, expense_id, requested_by, requested_by_name, old_data, new_data }) {
+  createPendingAction({ action_type, expense_id, requested_by, requested_by_name, old_data, new_data, reason }) {
     const result = db.prepare(`
-      INSERT INTO pending_actions (action_type, expense_id, requested_by, requested_by_name, old_data, new_data)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO pending_actions (action_type, expense_id, requested_by, requested_by_name, old_data, new_data, reason)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(action_type, expense_id, requested_by, requested_by_name,
       old_data ? JSON.stringify(old_data) : null,
-      new_data ? JSON.stringify(new_data) : null);
+      new_data ? JSON.stringify(new_data) : null,
+      reason || '');
     return result.lastInsertRowid;
   },
 
@@ -618,15 +715,20 @@ const dao = {
     if (!action) return null;
 
     if (action.action_type === 'delete') {
-      db.prepare('DELETE FROM expenses WHERE id = ?').run(action.expense_id);
+      this.softDeleteExpense(action.expense_id, reviewedBy, action.reason || '');
     } else if (action.action_type === 'edit') {
       const newData = JSON.parse(action.new_data);
+      const oldExpense = this.getExpenseById(action.expense_id);
       const sets = [];
       const vals = [];
-      if (newData.description !== undefined) { sets.push('description = ?'); vals.push(newData.description); }
-      if (newData.amount !== undefined) { sets.push('amount = ?'); vals.push(newData.amount); }
-      if (newData.category_id !== undefined) { sets.push('category_id = ?'); vals.push(newData.category_id); }
-      if (newData.note !== undefined) { sets.push('note = ?'); vals.push(newData.note); }
+      for (const [key, val] of Object.entries(newData)) {
+        if (val !== undefined && oldExpense && oldExpense[key] !== val) {
+          this.addEditHistory(action.expense_id, key, oldExpense[key], val, action.requested_by, action.requested_by_name, action.reason || '');
+          if (['description', 'amount', 'category_id', 'note'].includes(key)) {
+            sets.push(`${key} = ?`); vals.push(val);
+          }
+        }
+      }
       if (sets.length > 0) {
         sets.push("updated_at = CURRENT_TIMESTAMP");
         vals.push(action.expense_id);
@@ -642,7 +744,94 @@ const dao = {
   rejectPendingAction(actionId, reviewedBy) {
     db.prepare(`UPDATE pending_actions SET status = 'rejected', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .run(reviewedBy, actionId);
-  }
+  },
+
+  // ---- Payment Requests ----
+  createPaymentRequest({ requested_by, requested_by_name, from_date, to_date, total_amount, expense_count, expense_ids, note }) {
+    if (expense_ids) {
+      const ids = expense_ids.split(',').map(Number).filter(n => n > 0);
+      for (const eid of ids) {
+        db.prepare('UPDATE expenses SET payment_status = ? WHERE id = ?').run('requested', eid);
+      }
+    }
+    const result = db.prepare(`
+      INSERT INTO payment_requests (requested_by, requested_by_name, from_date, to_date, total_amount, expense_count, expense_ids, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(requested_by, requested_by_name || '', from_date || '', to_date || '', total_amount, expense_count, expense_ids || '', note || '');
+    return result.lastInsertRowid;
+  },
+
+  getPaymentRequests(userId) {
+    let sql = `SELECT * FROM payment_requests`;
+    const params = [];
+    if (userId) { sql += ' WHERE requested_by = ?'; params.push(userId); }
+    sql += ' ORDER BY created_at DESC';
+    return db.prepare(sql).all(...params);
+  },
+
+  getPaymentRequestById(id) {
+    return db.prepare('SELECT * FROM payment_requests WHERE id = ?').get(id);
+  },
+
+  approvePaymentRequest(id, approvedBy) {
+    db.prepare(`UPDATE payment_requests SET status = 'approved', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(approvedBy, id);
+  },
+
+  markPaymentRequestPaid(id) {
+    const pr = db.prepare('SELECT * FROM payment_requests WHERE id = ?').get(id);
+    if (!pr) return;
+    db.prepare(`UPDATE payment_requests SET status = 'paid', paid_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
+    if (pr.expense_ids) {
+      const ids = pr.expense_ids.split(',').map(Number).filter(n => n > 0);
+      for (const eid of ids) {
+        db.prepare('UPDATE expenses SET payment_status = ? WHERE id = ?').run('paid', eid);
+      }
+    }
+  },
+
+  rejectPaymentRequest(id) {
+    const pr = db.prepare('SELECT * FROM payment_requests WHERE id = ?').get(id);
+    if (!pr) return;
+    db.prepare(`UPDATE payment_requests SET status = 'rejected' WHERE id = ?`).run(id);
+    if (pr.expense_ids) {
+      const ids = pr.expense_ids.split(',').map(Number).filter(n => n > 0);
+      for (const eid of ids) {
+        db.prepare('UPDATE expenses SET payment_status = ? WHERE id = ?').run('unpaid', eid);
+      }
+    }
+  },
+
+  // ---- Advances (Tạm ứng) ----
+  createAdvance({ zalo_user_id, zalo_user_name, amount, purpose, note }) {
+    const result = db.prepare(`
+      INSERT INTO advances (zalo_user_id, zalo_user_name, amount, purpose, note)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(zalo_user_id, zalo_user_name || '', amount, purpose || '', note || '');
+    return result.lastInsertRowid;
+  },
+
+  getAdvances(userId) {
+    let sql = `SELECT * FROM advances`;
+    const params = [];
+    if (userId) { sql += ' WHERE zalo_user_id = ?'; params.push(userId); }
+    sql += ' ORDER BY created_at DESC';
+    return db.prepare(sql).all(...params);
+  },
+
+  approveAdvance(id, approvedBy) {
+    db.prepare(`UPDATE advances SET status = 'approved', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(approvedBy, id);
+  },
+
+  rejectAdvance(id) {
+    db.prepare(`UPDATE advances SET status = 'rejected' WHERE id = ?`).run(id);
+  },
+
+  settleAdvance(id, settledAmount, note) {
+    db.prepare(`UPDATE advances SET status = 'settled', settled_at = CURRENT_TIMESTAMP, settled_amount = ?, note = COALESCE(note || ' | ' || ?, note) WHERE id = ?`)
+      .run(settledAmount, note || '', id);
+  },
 };
 
 module.exports = { db, dao };
