@@ -1124,7 +1124,7 @@ async function saveCompanySettings() {
     const fields = ['company_name', 'company_address', 'company_tax_code', 'company_phone',
         'company_bank_account', 'company_bank_name',
         'approver_name', 'approver_title', 'accountant_name',
-        'km_rate', 'google_maps_api_key'];
+        'km_rate', 'goong_api_key'];
     const data = {};
     fields.forEach(key => {
         const el = document.getElementById(`setting-${key}`);
@@ -1649,14 +1649,21 @@ async function settleAdvance(id, originalAmount) {
     } catch (err) { showToast('Lỗi', 'error'); }
 }
 
-// ============= Distance Calculator =============
+// ============= Distance Calculator (Goong Map) =============
 let distanceMode = 'address';
 let lastDistanceResult = null;
+let goongDebounceTimers = {};
 
 function openDistanceCalc() {
     distanceMode = 'address';
     document.getElementById('dist-origin').value = '';
     document.getElementById('dist-destination').value = '';
+    document.getElementById('dist-origin-lat').value = '';
+    document.getElementById('dist-origin-lng').value = '';
+    document.getElementById('dist-destination-lat').value = '';
+    document.getElementById('dist-destination-lng').value = '';
+    document.getElementById('dist-origin-place-id').value = '';
+    document.getElementById('dist-destination-place-id').value = '';
     document.getElementById('dist-manual-km').value = '';
     document.getElementById('distance-result').style.display = 'none';
     document.getElementById('btn-save-distance-expense').style.display = 'none';
@@ -1678,12 +1685,100 @@ function switchDistanceTab(tab, event) {
     lastDistanceResult = null;
 }
 
+// Goong Autocomplete
+function onGoongInput(field) {
+    const input = document.getElementById(field === 'origin' ? 'dist-origin' : 'dist-destination');
+    const value = input.value.trim();
+
+    // Clear previous coordinates when user types
+    document.getElementById(`dist-${field}-lat`).value = '';
+    document.getElementById(`dist-${field}-lng`).value = '';
+    document.getElementById(`dist-${field}-place-id`).value = '';
+
+    // Debounce
+    clearTimeout(goongDebounceTimers[field]);
+    if (value.length < 2) {
+        hideGoongSuggestions(field);
+        return;
+    }
+    goongDebounceTimers[field] = setTimeout(() => fetchGoongSuggestions(field, value), 300);
+}
+
+async function fetchGoongSuggestions(field, query) {
+    try {
+        const res = await apiGet(`/goong/autocomplete?input=${encodeURIComponent(query)}`);
+        if (res.ok && res.result.length > 0) {
+            showGoongSuggestions(field, res.result);
+        } else {
+            hideGoongSuggestions(field);
+        }
+    } catch (err) {
+        hideGoongSuggestions(field);
+    }
+}
+
+function showGoongSuggestions(field, predictions) {
+    const container = document.getElementById(`goong-suggestions-${field}`);
+    container.innerHTML = predictions.map(p => `
+        <div class="goong-suggestion-item" onclick="selectGoongPlace('${field}', '${p.place_id}', ${JSON.stringify(p.description).replace(/'/g, '&#39;')})">
+            <div class="main-text">${escapeHtml(p.main_text)}</div>
+            <div class="sub-text">${escapeHtml(p.description)}</div>
+        </div>
+    `).join('');
+    container.classList.add('show');
+}
+
+function hideGoongSuggestions(field) {
+    const container = document.getElementById(`goong-suggestions-${field}`);
+    if (container) container.classList.remove('show');
+}
+
+async function selectGoongPlace(field, placeId, description) {
+    const input = document.getElementById(field === 'origin' ? 'dist-origin' : 'dist-destination');
+    input.value = description;
+    document.getElementById(`dist-${field}-place-id`).value = placeId;
+    hideGoongSuggestions(field);
+
+    // Get lat/lng from place detail
+    try {
+        const res = await apiGet(`/goong/place-detail?place_id=${placeId}`);
+        if (res.ok) {
+            document.getElementById(`dist-${field}-lat`).value = res.result.lat;
+            document.getElementById(`dist-${field}-lng`).value = res.result.lng;
+        }
+    } catch (err) {
+        showToast('Không lấy được tọa độ', 'error');
+    }
+}
+
+// Close suggestions when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#dist-origin') && !e.target.closest('#goong-suggestions-origin')) {
+        hideGoongSuggestions('origin');
+    }
+    if (!e.target.closest('#dist-destination') && !e.target.closest('#goong-suggestions-destination')) {
+        hideGoongSuggestions('destination');
+    }
+});
+
 async function calculateDistance() {
     const body = {};
     if (distanceMode === 'address') {
-        body.origin = document.getElementById('dist-origin').value.trim();
-        body.destination = document.getElementById('dist-destination').value.trim();
-        if (!body.origin || !body.destination) return showToast('Vui lòng nhập đầy đủ địa chỉ đi và đến', 'error');
+        const originLat = document.getElementById('dist-origin-lat').value;
+        const originLng = document.getElementById('dist-origin-lng').value;
+        const destLat = document.getElementById('dist-destination-lat').value;
+        const destLng = document.getElementById('dist-destination-lng').value;
+
+        if (!originLat || !originLng) return showToast('Vui lòng chọn điểm đi từ gợi ý', 'error');
+        if (!destLat || !destLng) return showToast('Vui lòng chọn điểm đến từ gợi ý', 'error');
+
+        body.origin_lat = originLat;
+        body.origin_lng = originLng;
+        body.dest_lat = destLat;
+        body.dest_lng = destLng;
+        body.origin_text = document.getElementById('dist-origin').value;
+        body.dest_text = document.getElementById('dist-destination').value;
+        body.vehicle = document.getElementById('dist-vehicle').value;
     } else {
         body.manual_km = document.getElementById('dist-manual-km').value;
         if (!body.manual_km || parseFloat(body.manual_km) <= 0) return showToast('Vui lòng nhập số km hợp lệ', 'error');
@@ -1711,13 +1806,10 @@ async function calculateDistance() {
 
 async function saveDistanceExpense() {
     if (!lastDistanceResult) return;
-    const origin = document.getElementById('dist-origin').value.trim();
-    const destination = document.getElementById('dist-destination').value.trim();
-    const manualKm = document.getElementById('dist-manual-km').value;
 
     let description = `Di chuyển ${lastDistanceResult.distance_text || lastDistanceResult.distance_km + ' km'}`;
-    if (origin && destination) {
-        description = `Di chuyển: ${origin} → ${destination} (${lastDistanceResult.distance_text})`;
+    if (lastDistanceResult.origin_text && lastDistanceResult.dest_text) {
+        description = `Di chuyển: ${lastDistanceResult.origin_text} → ${lastDistanceResult.dest_text} (${lastDistanceResult.distance_text})`;
     }
 
     // Find "Di chuyển & Vận chuyển" category

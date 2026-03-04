@@ -509,9 +509,9 @@
                                     placeholder="VD: 10000" min="0">
                             </div>
                             <div class="form-group">
-                                <label>Google Maps API Key</label>
-                                <input type="text" id="setting-google_maps_api_key" class="input"
-                                    placeholder="AIzaSy...">
+                                <label>Goong Map API Key</label>
+                                <input type="text" id="setting-goong_api_key" class="input"
+                                    placeholder="VD: your_goong_api_key">
                             </div>
                         </div>
                         <div style="margin-top:16px;">
@@ -996,14 +996,30 @@
                     </ul>
                     <div id="distance-tab-address">
                         <div class="mb-3">
-                            <label class="form-label">Địa chỉ đi *</label>
-                            <input type="text" id="dist-origin" class="form-control"
-                                placeholder="VD: 123 Nguyễn Huệ, Q1, TP.HCM">
+                            <label class="form-label">Phương tiện</label>
+                            <select id="dist-vehicle" class="form-select">
+                                <option value="car">Ô tô</option>
+                                <option value="bike">Xe máy</option>
+                                <option value="taxi">Taxi</option>
+                            </select>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Địa chỉ đến *</label>
-                            <input type="text" id="dist-destination" class="form-control"
-                                placeholder="VD: KCN Tân Bình, TP.HCM">
+                        <div class="mb-3 position-relative">
+                            <label class="form-label">Điểm đi *</label>
+                            <input type="text" id="dist-origin" class="form-control" autocomplete="off"
+                                placeholder="Gõ để tìm địa chỉ..." oninput="onGoongInput('origin')">
+                            <input type="hidden" id="dist-origin-lat">
+                            <input type="hidden" id="dist-origin-lng">
+                            <input type="hidden" id="dist-origin-place-id">
+                            <div class="goong-suggestions" id="goong-suggestions-origin"></div>
+                        </div>
+                        <div class="mb-3 position-relative">
+                            <label class="form-label">Điểm đến *</label>
+                            <input type="text" id="dist-destination" class="form-control" autocomplete="off"
+                                placeholder="Gõ để tìm địa chỉ..." oninput="onGoongInput('destination')">
+                            <input type="hidden" id="dist-destination-lat">
+                            <input type="hidden" id="dist-destination-lng">
+                            <input type="hidden" id="dist-destination-place-id">
+                            <div class="goong-suggestions" id="goong-suggestions-destination"></div>
                         </div>
                     </div>
                     <div id="distance-tab-manual" style="display:none;">
@@ -1036,6 +1052,36 @@
             </div>
         </div>
     </div>
+
+    <style>
+        .goong-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1050;
+            max-height: 220px;
+            overflow-y: auto;
+            display: none;
+        }
+        .goong-suggestions.show { display: block; }
+        .goong-suggestion-item {
+            padding: 10px 14px;
+            cursor: pointer;
+            font-size: 0.88rem;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.15s;
+        }
+        .goong-suggestion-item:last-child { border-bottom: none; }
+        .goong-suggestion-item:hover { background: #f0fdf4; }
+        .goong-suggestion-item .main-text { font-weight: 600; color: #1a2e23; }
+        .goong-suggestion-item .sub-text { font-size: 0.78rem; color: #6b7280; margin-top: 2px; }
+    </style>
 
     <!-- Toast notification -->
     <div class="toast-container" id="toast-container"></div>

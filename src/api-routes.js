@@ -187,7 +187,7 @@ router.get('/settings', (req, res) => {
         const keys = ['company_name', 'company_address', 'company_tax_code', 'company_phone',
             'company_bank_account', 'company_bank_name',
             'approver_name', 'approver_title', 'accountant_name',
-            'km_rate', 'google_maps_api_key'];
+            'km_rate', 'goong_api_key'];
         const settings = {};
         keys.forEach(k => { settings[k] = dao.getSetting(k) || ''; });
         res.json({ ok: true, result: settings });
@@ -669,12 +669,75 @@ router.get('/my-expenses', (req, res) => {
         res.status(500).json({ ok: false, error: err.message });
     }
 });
-// ============= Distance Calculation =============
+// ============= Distance Calculation (Goong Map) =============
 const axios = require('axios');
 
+// Proxy for Goong Autocomplete (avoid exposing API key to frontend)
+router.get('/goong/autocomplete', async (req, res) => {
+    try {
+        const { input, sessiontoken } = req.query;
+        if (!input || input.length < 2) return res.json({ ok: true, result: [] });
+
+        const apiKey = dao.getSetting('goong_api_key');
+        if (!apiKey) return res.status(400).json({ ok: false, error: 'Chưa cấu hình Goong API Key' });
+
+        const goongRes = await axios.get('https://rsapi.goong.io/Place/AutoComplete', {
+            params: {
+                api_key: apiKey,
+                input,
+                limit: 5,
+                ...(sessiontoken && { sessiontoken }),
+            },
+        });
+
+        const predictions = (goongRes.data?.predictions || []).map(p => ({
+            place_id: p.place_id,
+            description: p.description,
+            main_text: p.structured_formatting?.main_text || p.description,
+        }));
+
+        res.json({ ok: true, result: predictions });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// Get place detail (lat/lng) from place_id
+router.get('/goong/place-detail', async (req, res) => {
+    try {
+        const { place_id } = req.query;
+        if (!place_id) return res.status(400).json({ ok: false, error: 'Missing place_id' });
+
+        const apiKey = dao.getSetting('goong_api_key');
+        if (!apiKey) return res.status(400).json({ ok: false, error: 'Chưa cấu hình Goong API Key' });
+
+        const goongRes = await axios.get('https://rsapi.goong.io/Place/Detail', {
+            params: { api_key: apiKey, place_id },
+        });
+
+        const result = goongRes.data?.result;
+        if (!result || !result.geometry) {
+            return res.status(400).json({ ok: false, error: 'Không tìm thấy thông tin địa chỉ' });
+        }
+
+        res.json({
+            ok: true,
+            result: {
+                lat: result.geometry.location.lat,
+                lng: result.geometry.location.lng,
+                name: result.name,
+                address: result.formatted_address,
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// Calculate distance using Goong Direction API
 router.post('/calculate-distance', async (req, res) => {
     try {
-        const { origin, destination, manual_km } = req.body;
+        const { origin_lat, origin_lng, dest_lat, dest_lng, origin_text, dest_text, manual_km, vehicle } = req.body;
         const kmRate = parseFloat(dao.getSetting('km_rate')) || 10000; // Default 10,000 VND/km
 
         let distanceKm = 0;
@@ -686,30 +749,30 @@ router.post('/calculate-distance', async (req, res) => {
             distanceKm = parseFloat(manual_km);
             distanceText = `${distanceKm} km (nhập tay)`;
             durationText = '';
-        } else if (origin && destination) {
-            // Google Maps Distance Matrix API
-            const apiKey = dao.getSetting('google_maps_api_key');
+        } else if (origin_lat && origin_lng && dest_lat && dest_lng) {
+            // Goong Direction API
+            const apiKey = dao.getSetting('goong_api_key');
             if (!apiKey) {
-                return res.status(400).json({ ok: false, error: 'Chưa cấu hình Google Maps API Key trong Cài đặt' });
+                return res.status(400).json({ ok: false, error: 'Chưa cấu hình Goong API Key trong Cài đặt' });
             }
-            const gmRes = await axios.get('https://maps.googleapis.com/maps/api/distancematrix/json', {
+            const goongRes = await axios.get('https://rsapi.goong.io/Direction', {
                 params: {
-                    origins: origin,
-                    destinations: destination,
-                    key: apiKey,
-                    language: 'vi',
-                    units: 'metric',
+                    api_key: apiKey,
+                    origin: `${origin_lat},${origin_lng}`,
+                    destination: `${dest_lat},${dest_lng}`,
+                    vehicle: vehicle || 'car',
                 },
             });
-            const element = gmRes.data?.rows?.[0]?.elements?.[0];
-            if (!element || element.status !== 'OK') {
-                return res.status(400).json({ ok: false, error: 'Không tìm được quãng đường. Vui lòng kiểm tra địa chỉ.' });
+            const route = goongRes.data?.routes?.[0];
+            const leg = route?.legs?.[0];
+            if (!leg) {
+                return res.status(400).json({ ok: false, error: 'Không tìm được tuyến đường. Vui lòng kiểm tra địa chỉ.' });
             }
-            distanceKm = element.distance.value / 1000; // meters to km
-            distanceText = element.distance.text;
-            durationText = element.duration.text;
+            distanceKm = leg.distance.value / 1000; // meters to km
+            distanceText = leg.distance.text;
+            durationText = leg.duration.text;
         } else {
-            return res.status(400).json({ ok: false, error: 'Vui lòng nhập địa chỉ hoặc số km' });
+            return res.status(400).json({ ok: false, error: 'Vui lòng chọn địa chỉ hoặc nhập số km' });
         }
 
         const totalAmount = Math.round(distanceKm * kmRate);
@@ -722,6 +785,8 @@ router.post('/calculate-distance', async (req, res) => {
                 duration_text: durationText,
                 km_rate: kmRate,
                 total_amount: totalAmount,
+                origin_text: origin_text || '',
+                dest_text: dest_text || '',
             }
         });
     } catch (err) {
