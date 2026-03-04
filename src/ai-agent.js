@@ -28,8 +28,9 @@ Bạn là trợ lý AI chuyên hỗ trợ ghi nhận và quản lý chi tiêu ch
 ## NHIỆM VỤ CHÍNH:
 1. **Ghi nhận chi tiêu**: Khi user báo chi tiêu, hãy trích xuất thông tin và trả về JSON.
 2. **Xem báo cáo**: Khi user hỏi về tổng chi tiêu, trả lời dựa trên dữ liệu.
-3. **Tư vấn**: Đưa ra gợi ý tiết kiệm, cảnh báo vượt ngân sách.
-4. **Hỗ trợ chung**: Trả lời các câu hỏi liên quan đến quản lý chi tiêu.
+3. **Tính chi phí di chuyển**: Khi user muốn tính quãng đường / công tác phí, trả về JSON calculate_travel.
+4. **Tư vấn**: Đưa ra gợi ý tiết kiệm, cảnh báo vượt ngân sách.
+5. **Hỗ trợ chung**: Trả lời các câu hỏi liên quan đến quản lý chi tiêu.
 
 ## QUY TẮC TRÍCH XUẤT CHI TIÊU:
 
@@ -73,12 +74,29 @@ Ví dụ (nếu hôm nay là 2026-03-03):
 ## QUY TẮC QUAN TRỌNG:
 - NẾU user yêu cầu ghi CHI TIÊU → PHẢI trả về JSON với action "add_expense" hoặc "add_expenses"
 - NẾU user gửi DANH SÁCH nhiều mục → BẮT BUỘC dùng "add_expenses" (array)
-- NẾU user hỏi báo cáo/tổng kết → trả về action "get_report" 
+- NẾU user hỏi báo cáo/tổng kết → trả về action "get_report"
+- NẾU user muốn tính quãng đường / công tác phí / di chuyển từ A đến B → trả về action "calculate_travel"
 - NẾU user hỏi thông tin chung → trả lời bình thường (không JSON)
 - Luôn xác nhận lại chi tiêu sau khi ghi nhận
 - Đơn vị tiền tệ mặc định là VND
 - Khi không chắc về danh mục, chọn "Khác"
-- LUÔN trả về trường "date" chính xác trong JSON`;
+- LUÔN trả về trường "date" chính xác trong JSON
+
+## TÍNH CHI PHÍ DI CHUYỂN:
+Khi user muốn tính quãng đường, công tác phí, hoặc chi phí di chuyển từ điểm A đến điểm B, trả về:
+\`\`\`json
+{"action":"calculate_travel","data":{"origin":"địa chỉ đi đầy đủ","destination":"địa chỉ đến đầy đủ","vehicle":"car","note":"ghi chú nếu có"}}
+\`\`\`
+
+Quy tắc:
+- origin và destination phải là địa chỉ cụ thể, đầy đủ (thêm thành phố/tỉnh nếu user không nói rõ)
+- vehicle: "car" (ô tô, mặc định), "bike" (xe máy), "taxi" (taxi)
+- Nếu user nói "xe máy" hoặc "chạy xe" → vehicle = "bike"
+- Nếu user nói "taxi" hoặc "grab" → vehicle = "taxi"
+- Nếu user chỉ nói km (VD: "đi 25km") mà không có địa chỉ → trả về: {"action":"calculate_travel","data":{"manual_km":25,"vehicle":"car","note":""}}
+- Ví dụ: "đi từ quận 1 đến Bình Dương" → {"action":"calculate_travel","data":{"origin":"Quận 1, TP. Hồ Chí Minh","destination":"Bình Dương","vehicle":"car","note":""}}
+- Ví dụ: "công tác từ văn phòng 123 Nguyễn Huệ đến KCN Tân Bình bằng xe máy" → {"action":"calculate_travel","data":{"origin":"123 Nguyễn Huệ, Quận 1, TP. Hồ Chí Minh","destination":"KCN Tân Bình, TP. Hồ Chí Minh","vehicle":"bike","note":"công tác"}}
+- Ví dụ: "đi 30km hôm nay" → {"action":"calculate_travel","data":{"manual_km":30,"vehicle":"car","note":""}}`;
 
 async function callAI(messages) {
     try {
@@ -296,6 +314,9 @@ async function processMessage(userId, userName, userMessage) {
                 }
 
                 reply += `\n💡 Xem dashboard chi tiết tại trang quản lý.`;
+            } else if (actionData.action === 'calculate_travel') {
+                // ---- TRAVEL DISTANCE CALCULATION ----
+                reply = await handleTravelCalculation(actionData.data, userId, userName, today);
             }
         }
     } catch (parseError) {
@@ -426,6 +447,139 @@ async function processMultiImage(userId, userName, imagesBase64, caption = '') {
     }
 
     return { text: aiResponse, expense: null };
+}
+
+// ============= Travel Distance Calculation =============
+async function handleTravelCalculation(data, userId, userName, today) {
+    const kmRate = parseFloat(dao.getSetting('km_rate')) || 10000;
+    const goongApiKey = dao.getSetting('goong_api_key');
+
+    // Case 1: Manual km
+    if (data.manual_km) {
+        const km = parseFloat(data.manual_km);
+        const totalAmount = Math.round(km * kmRate);
+        const description = `Di chuyển ${km} km`;
+
+        const transportCat = dao.getAllCategories().find(c => c.name.includes('Di chuyển'));
+        const expenseId = dao.addExpense({
+            category_id: transportCat ? transportCat.id : null,
+            description,
+            amount: totalAmount,
+            currency: 'VND',
+            note: `${km} km x ${formatCurrency(kmRate)}/km` + (data.note ? ` | ${data.note}` : ''),
+            zalo_user_id: userId,
+            zalo_user_name: userName,
+            created_by: 'bot',
+            created_at: today + ' 12:00:00',
+        });
+
+        return `✅ Đã ghi nhận chi phí di chuyển!\n\n` +
+            `🚗 ${description}\n` +
+            `📏 Quãng đường: ${km} km\n` +
+            `💰 ${formatCurrency(totalAmount)} (${formatCurrency(kmRate)}/km)\n` +
+            `🆔 Mã: #${expenseId}`;
+    }
+
+    // Case 2: Address-based calculation via Goong
+    if (!goongApiKey) {
+        return `⚠️ Chưa cấu hình Goong API Key.\n\nVui lòng nhờ Admin vào Dashboard > Cài đặt > Cài đặt tính quãng đường để thêm API Key.\n\n💡 Hoặc bạn có thể nhắn: "đi 25km" để nhập số km thủ công.`;
+    }
+
+    const { origin, destination, vehicle } = data;
+    if (!origin || !destination) {
+        return `❌ Vui lòng cung cấp đầy đủ điểm đi và điểm đến.\n\nVí dụ: "đi từ Quận 1 đến Bình Dương"`;
+    }
+
+    try {
+        // Step 1: Geocode origin
+        const originGeo = await goongGeocode(goongApiKey, origin);
+        if (!originGeo) {
+            return `❌ Không tìm thấy địa chỉ: "${origin}"\n\nVui lòng thử lại với địa chỉ cụ thể hơn.`;
+        }
+
+        // Step 2: Geocode destination
+        const destGeo = await goongGeocode(goongApiKey, destination);
+        if (!destGeo) {
+            return `❌ Không tìm thấy địa chỉ: "${destination}"\n\nVui lòng thử lại với địa chỉ cụ thể hơn.`;
+        }
+
+        // Step 3: Get direction
+        const dirRes = await axios.get('https://rsapi.goong.io/Direction', {
+            params: {
+                api_key: goongApiKey,
+                origin: `${originGeo.lat},${originGeo.lng}`,
+                destination: `${destGeo.lat},${destGeo.lng}`,
+                vehicle: vehicle || 'car',
+            },
+        });
+
+        const route = dirRes.data?.routes?.[0];
+        const leg = route?.legs?.[0];
+        if (!leg) {
+            return `❌ Không tìm được tuyến đường từ "${origin}" đến "${destination}".\n\nVui lòng thử lại với địa chỉ khác.`;
+        }
+
+        const distanceKm = Math.round((leg.distance.value / 1000) * 10) / 10;
+        const distanceText = leg.distance.text;
+        const durationText = leg.duration.text;
+        const totalAmount = Math.round(distanceKm * kmRate);
+
+        const vehicleLabel = { car: 'Ô tô', bike: 'Xe máy', taxi: 'Taxi' }[vehicle] || 'Ô tô';
+        const description = `Di chuyển: ${origin} → ${destination}`;
+
+        // Save expense
+        const transportCat = dao.getAllCategories().find(c => c.name.includes('Di chuyển'));
+        const expenseId = dao.addExpense({
+            category_id: transportCat ? transportCat.id : null,
+            description,
+            amount: totalAmount,
+            currency: 'VND',
+            note: `${distanceKm} km x ${formatCurrency(kmRate)}/km | ${vehicleLabel}` + (data.note ? ` | ${data.note}` : ''),
+            zalo_user_id: userId,
+            zalo_user_name: userName,
+            created_by: 'bot',
+            created_at: today + ' 12:00:00',
+        });
+
+        return `✅ Đã ghi nhận chi phí di chuyển!\n\n` +
+            `🚗 ${vehicleLabel}\n` +
+            `📍 ${origin}\n` +
+            `📍 → ${destination}\n` +
+            `📏 Quãng đường: ${distanceText}\n` +
+            `⏱️ Thời gian: ${durationText}\n` +
+            `💰 ${formatCurrency(totalAmount)} (${formatCurrency(kmRate)}/km)\n` +
+            `🆔 Mã: #${expenseId}`;
+
+    } catch (err) {
+        console.error('[Travel] Error:', err.message);
+        return `❌ Lỗi khi tính quãng đường: ${err.message}\n\n💡 Bạn có thể nhắn: "đi 25km" để nhập thủ công.`;
+    }
+}
+
+async function goongGeocode(apiKey, address) {
+    try {
+        // Use Autocomplete to find place_id, then Place Detail for coordinates
+        const acRes = await axios.get('https://rsapi.goong.io/Place/AutoComplete', {
+            params: { api_key: apiKey, input: address, limit: 1 },
+        });
+        const prediction = acRes.data?.predictions?.[0];
+        if (!prediction) return null;
+
+        const detailRes = await axios.get('https://rsapi.goong.io/Place/Detail', {
+            params: { api_key: apiKey, place_id: prediction.place_id },
+        });
+        const result = detailRes.data?.result;
+        if (!result?.geometry?.location) return null;
+
+        return {
+            lat: result.geometry.location.lat,
+            lng: result.geometry.location.lng,
+            address: result.formatted_address || address,
+        };
+    } catch (err) {
+        console.error('[Goong Geocode] Error:', err.message);
+        return null;
+    }
 }
 
 function formatCurrency(amount) {
