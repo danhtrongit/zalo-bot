@@ -1719,12 +1719,17 @@ async function fetchGoongSuggestions(field, query) {
 
 function showGoongSuggestions(field, predictions) {
     const container = document.getElementById(`goong-suggestions-${field}`);
-    container.innerHTML = predictions.map(p => `
-        <div class="goong-suggestion-item" onclick="selectGoongPlace('${field}', '${p.place_id}', ${JSON.stringify(p.description).replace(/'/g, '&#39;')})">
-            <div class="main-text">${escapeHtml(p.main_text)}</div>
-            <div class="sub-text">${escapeHtml(p.description)}</div>
-        </div>
-    `).join('');
+    container.innerHTML = '';
+    predictions.forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'goong-suggestion-item';
+        item.dataset.field = field;
+        item.dataset.placeId = p.place_id;
+        item.dataset.description = p.description;
+        item.innerHTML = `<div class="main-text">${escapeHtml(p.main_text)}</div><div class="sub-text">${escapeHtml(p.description)}</div>`;
+        item.addEventListener('click', () => selectGoongPlace(field, p.place_id, p.description));
+        container.appendChild(item);
+    });
     container.classList.add('show');
 }
 
