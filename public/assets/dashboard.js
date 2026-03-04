@@ -478,12 +478,14 @@ async function loadExpenseUsersFilter() {
 function renderExpensesTable(expenses) {
     const tbody = document.getElementById('expenses-tbody');
     if (!expenses || expenses.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Không có chi tiêu nào</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Không có chi tiêu nào</td></tr>';
+        updatePrintSelectedBtn();
         return;
     }
 
     tbody.innerHTML = expenses.map(e => `
     <tr>
+      <td data-label=""><input type="checkbox" class="exp-checkbox" value="${e.id}" onchange="updatePrintSelectedBtn()"></td>
       <td data-label="ID"><strong>#${e.id}</strong></td>
       <td data-label="Mô tả">${escapeHtml(e.description)}</td>
       <td data-label="Danh mục">
@@ -500,12 +502,14 @@ function renderExpensesTable(expenses) {
       <td data-label="Ngày" class="time-text">${formatDate(e.created_at)}</td>
       <td data-label="">
         <div style="display:flex;gap:4px;">
+          <button class="btn-icon" onclick="printSingleExpense(${e.id})" title="In bill"><i class="fas fa-print"></i></button>
           <button class="btn-icon" onclick="editExpense(${e.id})" title="Sửa"><i class="fas fa-edit"></i></button>
           <button class="btn-icon delete" onclick="deleteExpenseItem(${e.id})" title="Xóa"><i class="fas fa-trash"></i></button>
         </div>
       </td>
     </tr>
   `).join('');
+    updatePrintSelectedBtn();
 }
 
 function renderPagination(total) {
@@ -1119,7 +1123,8 @@ async function loadCompanySettings() {
 async function saveCompanySettings() {
     const fields = ['company_name', 'company_address', 'company_tax_code', 'company_phone',
         'company_bank_account', 'company_bank_name',
-        'approver_name', 'approver_title', 'accountant_name'];
+        'approver_name', 'approver_title', 'accountant_name',
+        'km_rate', 'google_maps_api_key'];
     const data = {};
     fields.forEach(key => {
         const el = document.getElementById(`setting-${key}`);
@@ -1189,6 +1194,47 @@ async function clearAllData() {
 }
 
 // ============= Payment Request PDF =============
+// Print a single expense as payment request form
+function printSingleExpense(expenseId) {
+    const url = `/payment-request?expense_ids=${expenseId}`;
+    window.open(url, '_blank');
+}
+
+// Print multiple selected expenses
+function printSelectedExpenses() {
+    const checked = document.querySelectorAll('.exp-checkbox:checked');
+    if (!checked.length) return showToast('Chọn ít nhất 1 chi tiêu để in', 'error');
+    const ids = Array.from(checked).map(cb => cb.value).join(',');
+    const url = `/payment-request?expense_ids=${ids}`;
+    window.open(url, '_blank');
+}
+
+// Toggle select all expenses checkboxes
+function toggleSelectAllExp() {
+    const checked = document.getElementById('select-all-exp').checked;
+    document.querySelectorAll('.exp-checkbox').forEach(cb => cb.checked = checked);
+    updatePrintSelectedBtn();
+}
+
+// Update the print selected button visibility and count
+function updatePrintSelectedBtn() {
+    const checked = document.querySelectorAll('.exp-checkbox:checked');
+    const btn = document.getElementById('btn-print-selected-expenses');
+    const countEl = document.getElementById('print-selected-count');
+    if (btn) {
+        btn.style.display = checked.length > 0 ? '' : 'none';
+    }
+    if (countEl) {
+        countEl.textContent = checked.length;
+    }
+    // Uncheck select-all if not all are checked
+    const all = document.querySelectorAll('.exp-checkbox');
+    const selectAll = document.getElementById('select-all-exp');
+    if (selectAll) {
+        selectAll.checked = all.length > 0 && checked.length === all.length;
+    }
+}
+
 function generatePaymentRequest() {
     const fromDate = document.getElementById('pr-filter-from')?.value || document.getElementById('filter-from')?.value || '';
     const toDate = document.getElementById('pr-filter-to')?.value || document.getElementById('filter-to')?.value || '';
@@ -1415,6 +1461,8 @@ function renderPaymentRequestsTable(requests) {
         const statusBadge = {
             pending: '<span class="badge bg-warning">Chờ duyệt</span>',
             approved: '<span class="badge bg-info">Đã duyệt</span>',
+            printed: '<span class="badge bg-secondary">Đã in</span>',
+            submitted: '<span class="badge bg-primary">Đã trình</span>',
             paid: '<span class="badge bg-success">Đã TT</span>',
             rejected: '<span class="badge bg-danger">Từ chối</span>',
         }[r.status] || r.status;
@@ -1423,7 +1471,15 @@ function renderPaymentRequestsTable(requests) {
             actions = `<button class="btn btn-sm btn-outline-success" onclick="approvePaymentRequest(${r.id})"><i class="fas fa-check"></i></button>
                        <button class="btn btn-sm btn-outline-danger" onclick="rejectPaymentRequest(${r.id})"><i class="fas fa-times"></i></button>`;
         } else if (currentUser?.is_admin && r.status === 'approved') {
+            actions = `<button class="btn btn-sm btn-outline-secondary" onclick="markPaymentRequestPrinted(${r.id})"><i class="fas fa-print"></i> Đã in</button>`;
+        } else if (currentUser?.is_admin && r.status === 'printed') {
+            actions = `<button class="btn btn-sm btn-outline-primary" onclick="markPaymentRequestSubmitted(${r.id})"><i class="fas fa-paper-plane"></i> Đã trình</button>`;
+        } else if (currentUser?.is_admin && r.status === 'submitted') {
             actions = `<button class="btn btn-sm btn-success" onclick="markPaymentRequestPaid(${r.id})"><i class="fas fa-money-bill"></i> TT</button>`;
+        }
+        // Print button for all approved+ statuses
+        if (r.expense_ids && r.status !== 'pending' && r.status !== 'rejected') {
+            actions += ` <button class="btn btn-sm btn-outline-info" onclick="printPaymentRequestById(${r.id}, '${r.expense_ids}')" title="In đề nghị TT"><i class="fas fa-file-pdf"></i></button>`;
         }
         return `<tr>
             <td>${r.id}</td>
@@ -1462,6 +1518,29 @@ async function rejectPaymentRequest(id) {
     try {
         await apiPost(`/payment-requests/${id}/reject`);
         showToast('Đã từ chối', 'success');
+        loadPaymentRequests();
+    } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+function printPaymentRequestById(prId, expenseIds) {
+    const url = `/payment-request?expense_ids=${expenseIds}`;
+    window.open(url, '_blank');
+}
+
+async function markPaymentRequestPrinted(id) {
+    if (!confirm('Xác nhận đã in đề nghị thanh toán?')) return;
+    try {
+        await apiPost(`/payment-requests/${id}/printed`);
+        showToast('Đã đánh dấu "Đã in"', 'success');
+        loadPaymentRequests();
+    } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+async function markPaymentRequestSubmitted(id) {
+    if (!confirm('Xác nhận đã trình đề nghị thanh toán?')) return;
+    try {
+        await apiPost(`/payment-requests/${id}/submitted`);
+        showToast('Đã đánh dấu "Đã trình"', 'success');
         loadPaymentRequests();
     } catch (err) { showToast('Lỗi', 'error'); }
 }
@@ -1568,6 +1647,102 @@ async function settleAdvance(id, originalAmount) {
         showToast('Đã quyết toán', 'success');
         loadAdvances();
     } catch (err) { showToast('Lỗi', 'error'); }
+}
+
+// ============= Distance Calculator =============
+let distanceMode = 'address';
+let lastDistanceResult = null;
+
+function openDistanceCalc() {
+    distanceMode = 'address';
+    document.getElementById('dist-origin').value = '';
+    document.getElementById('dist-destination').value = '';
+    document.getElementById('dist-manual-km').value = '';
+    document.getElementById('distance-result').style.display = 'none';
+    document.getElementById('btn-save-distance-expense').style.display = 'none';
+    document.getElementById('distance-tab-address').style.display = '';
+    document.getElementById('distance-tab-manual').style.display = 'none';
+    lastDistanceResult = null;
+    openModal('distance-modal');
+}
+
+function switchDistanceTab(tab, event) {
+    event.preventDefault();
+    distanceMode = tab;
+    document.querySelectorAll('#distance-tabs .nav-link').forEach(a => a.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('distance-tab-address').style.display = tab === 'address' ? '' : 'none';
+    document.getElementById('distance-tab-manual').style.display = tab === 'manual' ? '' : 'none';
+    document.getElementById('distance-result').style.display = 'none';
+    document.getElementById('btn-save-distance-expense').style.display = 'none';
+    lastDistanceResult = null;
+}
+
+async function calculateDistance() {
+    const body = {};
+    if (distanceMode === 'address') {
+        body.origin = document.getElementById('dist-origin').value.trim();
+        body.destination = document.getElementById('dist-destination').value.trim();
+        if (!body.origin || !body.destination) return showToast('Vui lòng nhập đầy đủ địa chỉ đi và đến', 'error');
+    } else {
+        body.manual_km = document.getElementById('dist-manual-km').value;
+        if (!body.manual_km || parseFloat(body.manual_km) <= 0) return showToast('Vui lòng nhập số km hợp lệ', 'error');
+    }
+
+    try {
+        const res = await apiPost('/calculate-distance', body);
+        if (res.ok) {
+            const r = res.result;
+            lastDistanceResult = r;
+            document.getElementById('dist-result-km').textContent = r.distance_text || `${r.distance_km} km`;
+            document.getElementById('dist-result-duration').textContent = r.duration_text || '-';
+            document.getElementById('dist-result-duration-row').style.display = r.duration_text ? '' : 'none';
+            document.getElementById('dist-result-rate').textContent = formatCurrency(r.km_rate);
+            document.getElementById('dist-result-amount').textContent = formatCurrency(r.total_amount);
+            document.getElementById('distance-result').style.display = '';
+            document.getElementById('btn-save-distance-expense').style.display = '';
+        } else {
+            showToast(res.error || 'Lỗi tính quãng đường', 'error');
+        }
+    } catch (err) {
+        showToast('Lỗi kết nối', 'error');
+    }
+}
+
+async function saveDistanceExpense() {
+    if (!lastDistanceResult) return;
+    const origin = document.getElementById('dist-origin').value.trim();
+    const destination = document.getElementById('dist-destination').value.trim();
+    const manualKm = document.getElementById('dist-manual-km').value;
+
+    let description = `Di chuyển ${lastDistanceResult.distance_text || lastDistanceResult.distance_km + ' km'}`;
+    if (origin && destination) {
+        description = `Di chuyển: ${origin} → ${destination} (${lastDistanceResult.distance_text})`;
+    }
+
+    // Find "Di chuyển & Vận chuyển" category
+    const transportCat = categories.find(c => c.name.includes('Di chuyển'));
+    const categoryId = transportCat ? transportCat.id : (categories[0]?.id || 1);
+
+    try {
+        const res = await apiPost('/expenses', {
+            description,
+            amount: lastDistanceResult.total_amount,
+            category_id: categoryId,
+            note: `${lastDistanceResult.distance_km} km x ${formatCurrency(lastDistanceResult.km_rate)}/km`,
+            created_by: 'dashboard',
+        });
+        if (res.ok) {
+            showToast(`Đã thêm chi tiêu di chuyển: ${formatCurrency(lastDistanceResult.total_amount)}`, 'success');
+            closeModal('distance-modal');
+            loadExpenses();
+            if (currentPage === 'dashboard') loadDashboard();
+        } else {
+            showToast(res.error || 'Lỗi', 'error');
+        }
+    } catch (err) {
+        showToast('Lỗi khi lưu chi tiêu', 'error');
+    }
 }
 
 // ============= Deleted Expenses Page =============

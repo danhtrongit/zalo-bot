@@ -186,7 +186,8 @@ router.get('/settings', (req, res) => {
     try {
         const keys = ['company_name', 'company_address', 'company_tax_code', 'company_phone',
             'company_bank_account', 'company_bank_name',
-            'approver_name', 'approver_title', 'accountant_name'];
+            'approver_name', 'approver_title', 'accountant_name',
+            'km_rate', 'google_maps_api_key'];
         const settings = {};
         keys.forEach(k => { settings[k] = dao.getSetting(k) || ''; });
         res.json({ ok: true, result: settings });
@@ -210,19 +211,29 @@ router.post('/settings', (req, res) => {
 // ============= Payment Request Form =============
 router.get('/reports/payment-request', (req, res) => {
     try {
-        const { from_date, to_date, zalo_user_id } = req.query;
-        // Get expenses for the form
-        const expenses = dao.getExpenses({
-            limit: 1000,
-            from_date,
-            to_date,
-            ...(zalo_user_id ? { search: '', category_id: undefined } : {}),
-        });
+        const { from_date, to_date, zalo_user_id, expense_ids } = req.query;
 
-        // Filter by zalo_user_id if needed
-        let filteredExpenses = expenses.rows;
-        if (zalo_user_id) {
-            filteredExpenses = expenses.rows.filter(e => e.zalo_user_id === zalo_user_id);
+        let filteredExpenses = [];
+
+        if (expense_ids) {
+            // Mode: specific expense IDs (single or multi-select print)
+            const idList = expense_ids.split(',').map(Number).filter(n => n > 0);
+            for (const eid of idList) {
+                const exp = dao.getExpenseById(eid);
+                if (exp) filteredExpenses.push(exp);
+            }
+        } else {
+            // Mode: date range + optional user filter
+            const expenses = dao.getExpenses({
+                limit: 1000,
+                from_date,
+                to_date,
+                ...(zalo_user_id ? { search: '', category_id: undefined } : {}),
+            });
+            filteredExpenses = expenses.rows;
+            if (zalo_user_id) {
+                filteredExpenses = filteredExpenses.filter(e => e.zalo_user_id === zalo_user_id);
+            }
         }
 
         // Get company settings
@@ -238,6 +249,10 @@ router.get('/reports/payment-request', (req, res) => {
         if (zalo_user_id) {
             const user = filteredExpenses.find(e => e.zalo_user_id === zalo_user_id);
             requesterName = user?.zalo_user_name || zalo_user_id;
+        } else if (expense_ids && filteredExpenses.length > 0) {
+            // If printing specific expenses, derive requester from expenses
+            const uniqueUsers = [...new Set(filteredExpenses.map(e => e.zalo_user_name).filter(Boolean))];
+            requesterName = uniqueUsers.length === 1 ? uniqueUsers[0] : 'Nhiều nhân viên';
         }
 
         res.json({
@@ -546,6 +561,36 @@ router.post('/payment-requests/:id/reject', adminOnly, (req, res) => {
     }
 });
 
+router.post('/payment-requests/:id/printed', adminOnly, (req, res) => {
+    try {
+        dao.markPaymentRequestPrinted(req.params.id);
+        const pr = dao.getPaymentRequestById(req.params.id);
+        if (pr) {
+            zaloApi.sendMessage(pr.requested_by,
+                `🖨️ Đề nghị thanh toán #${pr.id} đã được in (${pr.total_amount.toLocaleString('vi-VN')} ₫)`
+            ).catch(e => console.error('[Notify] Error:', e.message));
+        }
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+router.post('/payment-requests/:id/submitted', adminOnly, (req, res) => {
+    try {
+        dao.markPaymentRequestSubmitted(req.params.id);
+        const pr = dao.getPaymentRequestById(req.params.id);
+        if (pr) {
+            zaloApi.sendMessage(pr.requested_by,
+                `📋 Đề nghị thanh toán #${pr.id} đã được trình ký (${pr.total_amount.toLocaleString('vi-VN')} ₫)`
+            ).catch(e => console.error('[Notify] Error:', e.message));
+        }
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
 // ============= Advances (Tạm ứng) =============
 router.post('/advances', (req, res) => {
     try {
@@ -624,6 +669,66 @@ router.get('/my-expenses', (req, res) => {
         res.status(500).json({ ok: false, error: err.message });
     }
 });
+// ============= Distance Calculation =============
+const axios = require('axios');
+
+router.post('/calculate-distance', async (req, res) => {
+    try {
+        const { origin, destination, manual_km } = req.body;
+        const kmRate = parseFloat(dao.getSetting('km_rate')) || 10000; // Default 10,000 VND/km
+
+        let distanceKm = 0;
+        let distanceText = '';
+        let durationText = '';
+
+        if (manual_km) {
+            // Manual km input
+            distanceKm = parseFloat(manual_km);
+            distanceText = `${distanceKm} km (nhập tay)`;
+            durationText = '';
+        } else if (origin && destination) {
+            // Google Maps Distance Matrix API
+            const apiKey = dao.getSetting('google_maps_api_key');
+            if (!apiKey) {
+                return res.status(400).json({ ok: false, error: 'Chưa cấu hình Google Maps API Key trong Cài đặt' });
+            }
+            const gmRes = await axios.get('https://maps.googleapis.com/maps/api/distancematrix/json', {
+                params: {
+                    origins: origin,
+                    destinations: destination,
+                    key: apiKey,
+                    language: 'vi',
+                    units: 'metric',
+                },
+            });
+            const element = gmRes.data?.rows?.[0]?.elements?.[0];
+            if (!element || element.status !== 'OK') {
+                return res.status(400).json({ ok: false, error: 'Không tìm được quãng đường. Vui lòng kiểm tra địa chỉ.' });
+            }
+            distanceKm = element.distance.value / 1000; // meters to km
+            distanceText = element.distance.text;
+            durationText = element.duration.text;
+        } else {
+            return res.status(400).json({ ok: false, error: 'Vui lòng nhập địa chỉ hoặc số km' });
+        }
+
+        const totalAmount = Math.round(distanceKm * kmRate);
+
+        res.json({
+            ok: true,
+            result: {
+                distance_km: Math.round(distanceKm * 10) / 10,
+                distance_text: distanceText,
+                duration_text: durationText,
+                km_rate: kmRate,
+                total_amount: totalAmount,
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
 // ============= Admin Data Management =============
 router.post('/admin/clear-data', adminOnly, (req, res) => {
     try {

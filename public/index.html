@@ -210,6 +210,9 @@
                     <p class="page-subtitle">Danh sách tổng hợp các khoản chi tiêu</p>
                 </div>
                 <div class="header-actions">
+                    <button class="btn btn-outline-primary" onclick="openDistanceCalc()">
+                        <i class="fas fa-route"></i> Tính quãng đường
+                    </button>
                     <button class="btn btn-primary" onclick="openAddExpense()">
                         <i class="fas fa-plus"></i> Thêm chi tiêu
                     </button>
@@ -288,10 +291,19 @@
 
             <!-- Expenses Table -->
             <div class="card">
+                <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                    <h3 style="margin:0;"><i class="fas fa-list"></i> Danh sách chi tiêu</h3>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button class="btn btn-sm btn-outline-primary" id="btn-print-selected-expenses" onclick="printSelectedExpenses()" style="display:none;">
+                            <i class="fas fa-print"></i> In <span id="print-selected-count">0</span> mục đã chọn
+                        </button>
+                    </div>
+                </div>
                 <div class="table-responsive">
                     <table class="data-table">
                         <thead>
                             <tr>
+                                <th style="width:30px;"><input type="checkbox" id="select-all-exp" onchange="toggleSelectAllExp()"></th>
                                 <th>Mã</th>
                                 <th>Mô tả</th>
                                 <th>Danh mục</th>
@@ -486,6 +498,20 @@
                                 <label>Kế toán</label>
                                 <input type="text" id="setting-accountant_name" class="input"
                                     placeholder="VD: Trần Thị B">
+                            </div>
+                        </div>
+                        <div class="sidebar-divider" style="margin:20px 0;"></div>
+                        <h4 style="margin-bottom:12px;font-size:0.95rem;"><i class="fas fa-route"></i> Cài đặt tính quãng đường</h4>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                            <div class="form-group">
+                                <label>Định mức VNĐ/km</label>
+                                <input type="number" id="setting-km_rate" class="input"
+                                    placeholder="VD: 10000" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label>Google Maps API Key</label>
+                                <input type="text" id="setting-google_maps_api_key" class="input"
+                                    placeholder="AIzaSy...">
                             </div>
                         </div>
                         <div style="margin-top:16px;">
@@ -945,6 +971,66 @@
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
                     <button type="button" class="btn btn-success" onclick="saveAdvance()">
                         <i class="fas fa-save"></i> Gửi yêu cầu
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Distance Calculator Modal -->
+    <div class="modal fade" id="distance-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-route"></i> Tính chi phí quãng đường</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs mb-3" id="distance-tabs">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#" onclick="switchDistanceTab('address', event)">Nhập địa chỉ</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" onclick="switchDistanceTab('manual', event)">Nhập km thủ công</a>
+                        </li>
+                    </ul>
+                    <div id="distance-tab-address">
+                        <div class="mb-3">
+                            <label class="form-label">Địa chỉ đi *</label>
+                            <input type="text" id="dist-origin" class="form-control"
+                                placeholder="VD: 123 Nguyễn Huệ, Q1, TP.HCM">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Địa chỉ đến *</label>
+                            <input type="text" id="dist-destination" class="form-control"
+                                placeholder="VD: KCN Tân Bình, TP.HCM">
+                        </div>
+                    </div>
+                    <div id="distance-tab-manual" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">Số km *</label>
+                            <input type="number" id="dist-manual-km" class="form-control" min="0.1" step="0.1"
+                                placeholder="VD: 25.5">
+                        </div>
+                    </div>
+                    <div id="distance-result" style="display:none;padding:16px;background:#f0fdf4;border-radius:8px;margin-top:12px;">
+                        <div style="display:flex;flex-direction:column;gap:6px;">
+                            <div><strong>Quãng đường:</strong> <span id="dist-result-km"></span></div>
+                            <div id="dist-result-duration-row"><strong>Thời gian:</strong> <span id="dist-result-duration"></span></div>
+                            <div><strong>Định mức:</strong> <span id="dist-result-rate"></span>/km</div>
+                            <div style="font-size:1.1rem;font-weight:700;color:#00582a;margin-top:4px;">
+                                Thành tiền: <span id="dist-result-amount"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="button" class="btn btn-primary" onclick="calculateDistance()">
+                        <i class="fas fa-calculator"></i> Tính
+                    </button>
+                    <button type="button" class="btn btn-success" id="btn-save-distance-expense" style="display:none;" onclick="saveDistanceExpense()">
+                        <i class="fas fa-save"></i> Lưu chi tiêu
                     </button>
                 </div>
             </div>

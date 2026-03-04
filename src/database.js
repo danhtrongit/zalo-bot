@@ -791,6 +791,14 @@ const dao = {
     }
   },
 
+  markPaymentRequestPrinted(id) {
+    db.prepare(`UPDATE payment_requests SET status = 'printed' WHERE id = ?`).run(id);
+  },
+
+  markPaymentRequestSubmitted(id) {
+    db.prepare(`UPDATE payment_requests SET status = 'submitted' WHERE id = ?`).run(id);
+  },
+
   rejectPaymentRequest(id) {
     const pr = db.prepare('SELECT * FROM payment_requests WHERE id = ?').get(id);
     if (!pr) return;

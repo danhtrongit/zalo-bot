@@ -299,6 +299,7 @@
         const fromDate = params.get('from_date') || '';
         const toDate = params.get('to_date') || '';
         const userId = params.get('zalo_user_id') || '';
+        const expenseIds = params.get('expense_ids') || '';
 
         function formatCurrency(amount) {
             if (!amount) return '0';
@@ -347,7 +348,15 @@
 
         async function loadData() {
             try {
-                const url = `/api/reports/payment-request?from_date=${fromDate}&to_date=${toDate}&zalo_user_id=${userId}`;
+                const qp = new URLSearchParams();
+                if (expenseIds) {
+                    qp.append('expense_ids', expenseIds);
+                } else {
+                    if (fromDate) qp.append('from_date', fromDate);
+                    if (toDate) qp.append('to_date', toDate);
+                    if (userId) qp.append('zalo_user_id', userId);
+                }
+                const url = `/api/reports/payment-request?${qp}`;
                 const res = await fetch(url, { credentials: 'include' });
                 const json = await res.json();
                 if (!json.ok) throw new Error(json.error);
